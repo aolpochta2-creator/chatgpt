@@ -5,10 +5,11 @@ read_verilog build/${top}.mapped.v
 link_design $top
 
 create_clock -name Core_Clk -period 10.0 [get_ports Clk]
-set non_clock_inputs [remove_from_collection [all_inputs] [get_ports Clk]]
-set_input_delay 0.0 -clock Core_Clk $non_clock_inputs
-set_output_delay 0.0 -clock Core_Clk [all_outputs]
-set_load 0.005 [all_outputs]
+set_false_path -from [get_ports Reset_N]
+set_input_delay 0.0 -clock Core_Clk \
+    [get_ports {Pred_S Pred_C Pred_Wrap Carry_Low Candidate_K X D}]
+set_output_delay 0.0 -clock Core_Clk [get_ports {Residual_Path NX_Path}]
+set_load 0.005 [get_ports {Residual_Path NX_Path}]
 
 report_checks -path_delay max -group_count 10 -endpoint_count 10 \
     -fields {slew capacitance input_pin net fanout} -digits 4
