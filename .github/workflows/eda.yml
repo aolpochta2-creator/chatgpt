@@ -83,7 +83,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential cmake git tcl-dev swig bison flex automake \
+            build-essential cmake git tcl-dev swig bison flex libfl-dev automake \
             autotools-dev libtool libeigen3-dev libfmt-dev zlib1g-dev
       - name: Build pinned CUDD and official OpenSTA
         run: |
