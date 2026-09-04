@@ -72,3 +72,56 @@ jobs:
             build/${{ matrix.synth_top }}.mapped.v
             build/${{ matrix.synth_top }}.mapped.json
           if-no-files-found: warn
+
+  sta:
+    needs: variant
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OpenSTA build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git tcl-dev swig bison flex automake \
+            autotools-dev libeigen3-dev libfmt-dev zlib1g-dev
+      - name: Build pinned CUDD and official OpenSTA
+        run: |
+          mkdir -p tooling
+          git clone --depth 1 --branch cudd-3.0.0 \
+            https://github.com/cuddorg/cudd.git tooling/cudd
+          (cd tooling/cudd && ./configure && make -j2)
+          git clone https://github.com/parallaxsw/OpenSTA.git tooling/OpenSTA
+          git -C tooling/OpenSTA checkout 737b52f33b66e4c2ccc3e3ef22c3adfe9aec8d09
+          cmake -S tooling/OpenSTA -B tooling/OpenSTA/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCUDD_DIR="$GITHUB_WORKSPACE/tooling/cudd"
+          cmake --build tooling/OpenSTA/build --parallel 2
+          tooling/OpenSTA/build/sta -version
+      - name: Download all mapped kernels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v*-eda-reports
+          path: build
+          merge-multiple: true
+      - name: Fetch pinned Nangate45 Liberty
+        run: |
+          mkdir -p build/lib
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD-flow-scripts/0c914a7471340da86058dfe4d25d537f0282a508/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib \
+            --output build/lib/NangateOpenCellLibrary_typical.lib
+      - name: Run identical OpenSTA constraints
+        env:
+          LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
+        run: |
+          for top in kernel_v36rcm kernel_v39c42 kernel_v43sj17; do
+            TOP="$top" tooling/OpenSTA/build/sta -no_splash -exit scripts/sta.tcl \
+              | tee "build/${top}.opensta.rpt"
+          done
+      - name: Upload OpenSTA reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opensta-reports
+          path: build/*.opensta.rpt
+          if-no-files-found: warn
