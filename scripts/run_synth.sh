@@ -22,5 +22,10 @@ yosys -Q -l "build/${top}.yosys.log" -p "
     write_json build/${top}.mapped.json;
 "
 
-TOP="$top" sta -no_splash -exit scripts/sta.tcl \
-    | tee "build/${top}.sta.rpt"
+if [[ "${SKIP_OPENSTA:-0}" == "1" ]]; then
+    printf '%s\n' "OpenSTA deferred; inspect ABC/Yosys mapping log in this phase." \
+        > "build/${top}.sta.rpt"
+else
+    TOP="$top" sta -no_splash -exit scripts/sta.tcl \
+        | tee "build/${top}.sta.rpt"
+fi
