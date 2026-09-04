@@ -11,7 +11,7 @@ set_input_delay 0.0 -clock Core_Clk \
 set_output_delay 0.0 -clock Core_Clk [get_ports {Residual_Path NX_Path}]
 set_load 0.005 [get_ports {Residual_Path NX_Path}]
 
-report_checks -path_delay max -group_count 10 -endpoint_count 10 \
+report_checks -path_delay max -group_path_count 10 -endpoint_path_count 10 \
     -fields {slew capacitance input_pin net fanout} -digits 4
 report_worst_slack -max -digits 4
 report_tns -digits 4

@@ -40,26 +40,27 @@ assumption. V43 removes the top row only through its signed-safe proof.
 
 ## ROM treatment
 
-The functional and full standard-cell runs include:
+The functional full-divider RTL includes:
 
 - 64 × 167 coefficient bits (the constant high bit of C0 is implicit);
 - 256 × 16 and 32 × 10 split-square tables;
 - 256 × 24 cube table.
 
-Yosys maps these memories to standard-cell logic in the initial CI flow. This
-is reproducible and identical across candidates, but it is not a physical ROM
-macro model. Absolute area and timing must therefore be labelled
-"standard-cell ROM mapping". A later macro-aware run may add a characterized
-ROM without changing the arithmetic comparison contract.
+When the optional full tops are mapped, Yosys realizes these memories as
+standard-cell logic. That is reproducible and identical across candidates, but
+it is not a physical ROM macro model and would dominate the initial comparison.
+A later macro-aware run may add a characterized ROM without changing the
+arithmetic comparison contract.
 
 The default mapped comparison therefore uses `kernel_v36rcm`,
 `kernel_v39c42` and `kernel_v43sj17`. These tops begin at the actual signed
 V33 CSA cut and end after the V34 candidate CPA/register. They include the V43
 prefix and every variant-specific product/reduction level, while excluding the
 common ROM, predictor multipliers and FINAL. Full divider RTL remains compiled
-and simulated in every matrix job. Full standard-cell mapping is retained as a
-separate control run because it is much slower and dominated by the artificial
-ROM realization.
+and simulated in every matrix job. The Makefile exposes full-top mapping as a
+separate optional control run, but it is not part of the reported kernel
+checkpoint because it is much slower and dominated by the artificial ROM
+realization.
 
 ## Current implementation boundary
 

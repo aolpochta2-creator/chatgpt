@@ -1,5 +1,7 @@
 # Exact Integer Divider R&D
 
+[![Exact divider EDA](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/eda.yml/badge.svg)](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/eda.yml)
+
 This repository turns the V44 research checkpoint into a reproducible RTL and
 open-source ASIC synthesis experiment.
 
@@ -41,8 +43,11 @@ make synth-v39
 make synth-v43
 ```
 
-The GitHub Actions matrix installs Icarus Verilog, Yosys and OpenSTA, maps every
-variant to the same pinned Nangate45 Liberty file, and uploads the raw reports.
+The GitHub Actions matrix installs Icarus Verilog and Yosys, builds a pinned
+official OpenSTA, maps every comparison kernel to the same pinned Nangate45
+Liberty file, and uploads the raw reports.  Full divider tops are compiled and
+simulated; the mapped comparison deliberately isolates the structurally
+different product kernels.
 
 ## Evidence level
 
@@ -51,5 +56,7 @@ The signed-cut, separate-Booth and joint-prefix identities pass another 200,000
 randomized structural cases. These are pre-RTL mathematical checks, not a
 substitute for compiled RTL simulation.
 
-No candidate is declared fastest or smallest until the CI reports complete and
-the mapped netlists are reviewed for an equivalent comparison.
+The first equivalent mapped checkpoint is complete.  V43 is the area leader,
+while V39 has the best cell-only timing; V36 is dominated by V39 at the current
+kernel boundary.  Exact numbers, constraints, reproducibility pins and claim
+limits are in [`docs/RESULTS_V44_SYNTHESIS.md`](docs/RESULTS_V44_SYNTHESIS.md).
