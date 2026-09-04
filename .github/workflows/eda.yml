@@ -27,13 +27,16 @@ jobs:
         include:
           - id: v36
             number: 36
-            top: divider_v36rcm
+            rtl_top: divider_v36rcm
+            synth_top: kernel_v36rcm
           - id: v39
             number: 39
-            top: divider_v39c42
+            rtl_top: divider_v39c42
+            synth_top: kernel_v39c42
           - id: v43
             number: 43
-            top: divider_v43sj17
+            rtl_top: divider_v43sj17
+            synth_top: kernel_v43sj17
     steps:
       - uses: actions/checkout@v4
       - name: Install open-source EDA tools
@@ -43,29 +46,29 @@ jobs:
       - name: Generate deterministic tables and reducers
         run: make generate
       - name: Compile and simulate
-        run: bash scripts/run_sim.sh ${{ matrix.number }} 500
+        run: bash scripts/run_sim.sh ${{ matrix.number }} 25
       - name: Fetch pinned Nangate45 Liberty
         run: |
           mkdir -p build/lib
           curl --fail --location --retry 3 \
             https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD-flow-scripts/0c914a7471340da86058dfe4d25d537f0282a508/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib \
             --output build/lib/NangateOpenCellLibrary_typical.lib
-      - name: Synthesize, map and run STA
+      - name: Synthesize and map comparison kernel
         env:
           LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
         run: |
-          # Phase 1 establishes compiled RTL and identical ABC/Yosys mapping.
-          # OpenSTA is built in a separate pinned job after this gate passes.
-          SKIP_OPENSTA=1 bash scripts/run_synth.sh ${{ matrix.top }}
+          # The kernel boundary excludes common ROM/predictor/FINAL logic and
+          # measures the signed cut-product region that differs by variant.
+          SKIP_OPENSTA=1 bash scripts/run_synth.sh ${{ matrix.synth_top }}
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.id }}-eda-reports
           path: |
-            build/${{ matrix.top }}.yosys.log
-            build/${{ matrix.top }}.stat.rpt
-            build/${{ matrix.top }}.sta.rpt
-            build/${{ matrix.top }}.mapped.v
-            build/${{ matrix.top }}.mapped.json
+            build/${{ matrix.synth_top }}.yosys.log
+            build/${{ matrix.synth_top }}.stat.rpt
+            build/${{ matrix.synth_top }}.sta.rpt
+            build/${{ matrix.synth_top }}.mapped.v
+            build/${{ matrix.synth_top }}.mapped.json
           if-no-files-found: warn

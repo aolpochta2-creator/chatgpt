@@ -52,6 +52,15 @@ macro model. Absolute area and timing must therefore be labelled
 "standard-cell ROM mapping". A later macro-aware run may add a characterized
 ROM without changing the arithmetic comparison contract.
 
+The default mapped comparison therefore uses `kernel_v36rcm`,
+`kernel_v39c42` and `kernel_v43sj17`. These tops begin at the actual signed
+V33 CSA cut and end after the V34 candidate CPA/register. They include the V43
+prefix and every variant-specific product/reduction level, while excluding the
+common ROM, predictor multipliers and FINAL. Full divider RTL remains compiled
+and simulated in every matrix job. Full standard-cell mapping is retained as a
+separate control run because it is much slower and dominated by the artificial
+ROM realization.
+
 ## Current implementation boundary
 
 The PREP product trees have explicit, fixed CSA reduction depths. The common
