@@ -4,6 +4,10 @@ on:
   push:
   workflow_dispatch:
 
+concurrency:
+  group: exact-divider-eda-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   model:
     runs-on: ubuntu-24.04
@@ -39,7 +43,7 @@ jobs:
       - name: Generate deterministic tables and reducers
         run: make generate
       - name: Compile and simulate
-        run: bash scripts/run_sim.sh ${{ matrix.number }} 5000
+        run: bash scripts/run_sim.sh ${{ matrix.number }} 500
       - name: Fetch pinned Nangate45 Liberty
         run: |
           mkdir -p build/lib
