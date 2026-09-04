@@ -84,13 +84,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake git tcl-dev swig bison flex automake \
-            autotools-dev libeigen3-dev libfmt-dev zlib1g-dev
+            autotools-dev libtool libeigen3-dev libfmt-dev zlib1g-dev
       - name: Build pinned CUDD and official OpenSTA
         run: |
           mkdir -p tooling
           git clone --depth 1 --branch cudd-3.0.0 \
             https://github.com/cuddorg/cudd.git tooling/cudd
-          (cd tooling/cudd && ./configure && make -j2)
+          (cd tooling/cudd && autoreconf -fi && ./configure && make -j2)
           git clone https://github.com/parallaxsw/OpenSTA.git tooling/OpenSTA
           git -C tooling/OpenSTA checkout 737b52f33b66e4c2ccc3e3ef22c3adfe9aec8d09
           cmake -S tooling/OpenSTA -B tooling/OpenSTA/build \
