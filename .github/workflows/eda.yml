@@ -1,0 +1,64 @@
+name: Exact divider EDA
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  model:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate exact model
+        run: |
+          PYTHONPATH=. python3 scripts/validate_model.py
+          PYTHONPATH=. python3 scripts/validate_structure.py
+
+  variant:
+    needs: model
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: v36
+            number: 36
+            top: divider_v36rcm
+          - id: v39
+            number: 39
+            top: divider_v39c42
+          - id: v43
+            number: 43
+            top: divider_v43sj17
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install open-source EDA tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog yosys opensta
+      - name: Generate deterministic tables and reducers
+        run: make generate
+      - name: Compile and simulate
+        run: bash scripts/run_sim.sh ${{ matrix.number }} 5000
+      - name: Fetch pinned Nangate45 Liberty
+        run: |
+          mkdir -p build/lib
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD-flow-scripts/0c914a7471340da86058dfe4d25d537f0282a508/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib \
+            --output build/lib/NangateOpenCellLibrary_typical.lib
+      - name: Synthesize, map and run STA
+        env:
+          LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
+        run: bash scripts/run_synth.sh ${{ matrix.top }}
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.id }}-eda-reports
+          path: |
+            build/${{ matrix.top }}.yosys.log
+            build/${{ matrix.top }}.stat.rpt
+            build/${{ matrix.top }}.sta.rpt
+            build/${{ matrix.top }}.mapped.v
+            build/${{ matrix.top }}.mapped.json
+          if-no-files-found: warn

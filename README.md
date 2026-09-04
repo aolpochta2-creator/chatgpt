@@ -1,32 +1,55 @@
 # Exact Integer Divider R&D
 
-Research RTL for an exact 64-bit integer divider aimed at low cold-divisor latency.
+This repository turns the V44 research checkpoint into a reproducible RTL and
+open-source ASIC synthesis experiment.
 
-## Status
+## Current comparison
 
-This repository starts at the V44 research checkpoint. Mathematical and randomized model validation has been completed for the current architecture family, but real synthesis and static timing analysis have not yet selected a winner.
+- **V36RCM + V34DX control**: signed-safe binary redundant-cut products.
+- **V39C42 control**: separate signed radix-4 Booth products.
+- **V43SJ17 candidate**: signed-safe joint radix-4 recoder with 17 main rows.
+- **V44WAVE** remains a timing-bound study, not a fourth RTL candidate.
 
-Current comparison set:
+The immediate rule is unchanged: do not promote a new mathematical version
+before the same compile, simulation, synthesis, mapping and STA flow has run on
+V36, V39 and V43.
 
-- **V36RCM + V34DX + V35FF** — low-latency redundant-cut control.
-- **V39C42** — separate radix-4 Booth / column-level 4:2 control.
-- **V43SJ17** — signed-safe joint radix-4 candidate with 17 main rows.
-- **V44WAVE** — arrival-aware timing-bound study, not a separate implementation candidate.
+## Implemented operation
 
-## Immediate objective
+The first milestone is the exact normalized primitive
 
-Implement structurally honest, functionally equivalent RTL for V36, V39, and V43, then run all three through the same flow:
+```
+{Quotient, Remainder} = (Dividend_Hi * 2^64) divmod Divisor
+```
 
-1. Icarus Verilog compile and randomized exact quotient/remainder tests.
-2. Yosys synthesis with identical scripts and options.
-3. Mapping to the same open standard-cell library.
-4. Static timing and mapped-cell area reporting.
-5. Only then compare latency, area, area × latency, throughput, and power proxies.
+with `Divisor[63] = 1` and `Dividend_Hi < Divisor`. It is framed as two
+pipeline stages and accepts one input per cycle. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the comparison contract,
+signed-CSA correction and present implementation boundary.
 
-No new mathematical version should be promoted before this comparison is complete.
+## Reproduce
 
-## Scope and claims
+```bash
+make model
+make structure
+make test TESTS=5000
 
-The target niche is exact unsigned 64-bit cold division with a changing divisor. Warm or cached reciprocal division is a separate comparison case.
+# For mapped runs:
+export LIBERTY=/path/to/NangateOpenCellLibrary_typical.lib
+make synth-v36
+make synth-v39
+make synth-v43
+```
 
-Structural depth, row counts, and multiplier proxies from the research journal are analytical estimates, not synthesis or STA results. This repository will not claim superiority over SRT, Möller–Granlund, commercial dividers, or any other implementation until a fair physical comparison exists.
+The GitHub Actions matrix installs Icarus Verilog, Yosys and OpenSTA, maps every
+variant to the same pinned Nangate45 Liberty file, and uploads the raw reports.
+
+## Evidence level
+
+The Python model currently passes 100,004 randomized/directed exact divisions.
+The signed-cut, separate-Booth and joint-prefix identities pass another 200,000
+randomized structural cases. These are pre-RTL mathematical checks, not a
+substitute for compiled RTL simulation.
+
+No candidate is declared fastest or smallest until the CI reports complete and
+the mapped netlists are reviewed for an equivalent comparison.
