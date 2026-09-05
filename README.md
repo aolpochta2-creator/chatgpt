@@ -114,10 +114,22 @@ one max-cap violations respectively. Therefore none is a strict PREP5 pass and
 no new Tmin/Fmax is claimed. The conditional V43 3.10/3.05 ns runs were not
 started.
 
+A later causal check rebuilt PREP6 and PREP5 from one source tree, workflow and
+fixed seed in [run 33973681605](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33973681605),
+then repeated V43 at seeds 1/2 in successful
+[run 33975505349](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33975505349).
+PREP5 keeps a stable V43 area reduction of 6.10-6.51% and wire reduction of
+3.45-3.77%; its setup advantage is +47.4 ps at seed 1 and +27.2 ps at seed 2.
+The seed-1 max-cap residual disappears at seed 2, which is strict clean. PREP5
+therefore remains the engineering baseline, but this seed-sensitive result is
+not promoted to a new robust Tmin/Fmax claim.
+
 See the [physical audit](docs/PHYSICAL_AUDIT_V44.md) for the exact contract and
 caveats, [`docs/PHYSICAL_SWEEP_V44.csv`](docs/PHYSICAL_SWEEP_V44.csv) for all
 29 historical PREP6 job records,
 [`docs/PHYSICAL_PREP5_V44.csv`](docs/PHYSICAL_PREP5_V44.csv) for the three
-PREP5 measurements, and
+PREP5 measurements,
+[`docs/PHYSICAL_PREP_PAIRED_V44.csv`](docs/PHYSICAL_PREP_PAIRED_V44.csv) for
+the controlled same-run and seed-check evidence, and
 [`docs/RESULTS_V44_SYNTHESIS.md`](docs/RESULTS_V44_SYNTHESIS.md) for the
 historical and paired mapped checkpoints.

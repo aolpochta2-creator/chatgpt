@@ -264,6 +264,147 @@ parallel candidate branch inside complete PREP. Full-divider functional
 simulation covers the actual five-branch RTL; no full-divider physical claim
 is made.
 
+## Controlled same-run PREP6/PREP5 reproducibility
+
+The historical comparison above mixed separate source commits and separately
+optimized layouts. The controlled experiment removes that ambiguity. Commit
+`0ea49ea973c964ccc35f106c4cb1b7c1d89f4fd0` keeps the production PREP5 RTL
+byte-for-byte unchanged and adds a build-only PREP6 control. The control is a
+literal copy of the old kernel source, guarded by Git blob
+`0f366d5ffea469f843e6c5d911e597f772443601`; relative to production it adds
+only the `M=5` case `D + (D << 2)` / `X + (X << 2)`. It is not a V45 or a
+second production architecture. A joint Icarus test checks 640 legal PREP5 vs
+PREP6 cases and the restored control-only `M=5` behavior.
+
+Both modes are mapped in one Yosys 0.33 job, retain the identical top name, and
+then enter independent full physical jobs. This avoids both a source-tree
+comparison and an ABC top-name perturbation. The same-run mapped inputs are:
+
+| Kernel | PREP6 cells / area (um^2) | PREP5 cells / area (um^2) | Candidate_K direct loads | X direct loads | D direct loads | Unweighted max mapped stages to DFF |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| V36RCM | 55,697 / 63,263.844 | 54,618 / 62,285.496 | 10 -> 9 | 10,856 -> 10,483 | 8,420 -> 8,115 | 89 -> 96 |
+| V43SJ17 | 17,599 / 21,837.004 | 17,106 / 21,120.400 | 11 -> 10 | 2,952 -> 2,770 | 2,510 -> 2,318 | 97 -> 97 |
+
+The stage and direct-load counts are structural diagnostics from the mapped
+JSON, not STA. They show why "fewer cells" is not equivalent to "shallower"
+for V36: PREP5 reduces load and area but ABC selects a deeper Boolean DAG. V43
+keeps its maximum structural depth while reducing load.
+
+Every physical job fixes `GPL_RANDOM_SEED`, `GRT_SEED` and `OR_SEED` to the
+matrix seed. The raw logs confirm `global_placement -random_seed`,
+`set_global_routing_random -seed` and `detailed_route -or_seed`. All other
+contract values remain frozen: Nangate45, ORFS commit/image, die/core, density,
+SDC loads/transitions/fanout/reset, `SKIP_CTS_REPAIR_TIMING=0` and
+`LEC_CHECK=0`.
+
+### Primary paired matrix
+
+Actions run
+[33973681605](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33973681605)
+executes all six requested physical implementations from one commit and one
+workflow at seed 1. All six reach final GDS, OpenRCX SPEF and final STA.
+
+| Point | Mode | Job conclusion | Setup / TNS (ns) | Hold / TNS (ns) | Max-cap (worst fF) | Max-tran / fanout | Strict result |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| V36 @ 3.25 | PREP6 | failure* | +0.0171 / 0 | +0.0465 / 0 | 1 (-1.5242) | 0 / 1 (-2) | electrical fail |
+| V36 @ 3.25 | PREP5 | success | -0.0347 / -0.0856 | +0.0292 / 0 | 0 | 0 / 0 | setup fail |
+| V43 @ 3.20 | PREP6 | success | +0.0265 / 0 | +0.0194 / 0 | 0 | 0 / 0 | strict pass |
+| V43 @ 3.20 | PREP5 | success | +0.0437 / 0 | +0.0222 / 0 | 2 (-2.9080) | 0 / 0 | electrical fail |
+| V43 @ 3.15 | PREP6 | success | +0.0006 / 0 | +0.0187 / 0 | 0 | 0 / 0 | strict pass |
+| V43 @ 3.15 | PREP5 | success | +0.0480 / 0 | +0.0156 / 0 | 1 (-2.1108) | 0 / 0 | electrical fail |
+
+`*` The V36 PREP6 implementation is a valid measurement but its Actions job
+is red. The first parser version accepted only fractional electrical slack and
+rejected OpenSTA's integral `-2 (VIOLATED)` max-fanout line after the complete
+flow had finished. Commit
+`26494445f38875a28c76c10d7b69019cff36ee5f` fixes that reporting bug. The
+fixed parser was rerun on the uploaded raw artifact to recover the row above;
+the physical failure is the reported cap/fanout pair, not infrastructure.
+
+| Point | Mode | Physical cells | Area (um^2) | Wire (um) | Vias | CTS setup/hold buffers | GRT setup/hold/repair buffers |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| V36 @ 3.25 | PREP6 | 68,644 | 75,422.970 | 732,397 | 410,614 | 17 / 0 | 26 / 0 / 0 |
+| V36 @ 3.25 | PREP5 | 66,557 | 73,611.510 | 642,746 | 393,682 | 35 / 2 | 43 / 0 / 0 |
+| V43 @ 3.20 | PREP6 | 24,445 | 28,123.648 | 307,596 | 153,938 | 21 / 6 | 27 / 0 / 0 |
+| V43 @ 3.20 | PREP5 | 22,444 | 26,131.840 | 294,548 | 143,752 | 6 / 10 | 11 / 0 / 5 |
+| V43 @ 3.15 | PREP6 | 24,707 | 28,334.586 | 307,877 | 154,139 | 23 / 8 | 30 / 1 / 0 |
+| V43 @ 3.15 | PREP5 | 22,916 | 26,605.054 | 297,259 | 145,674 | 12 / 7 | 15 / 0 / 3 |
+
+All rows have 168 DFFs, zero detailed-route DRC and antenna violations, one
+post-CTS `repair_timing` call, and nonempty final ODB/DEF/GDS/netlist/SDC/SPEF.
+The exact job IDs, artifact sizes, critical endpoints and runtime are in
+[`PHYSICAL_PREP_PAIRED_V44.csv`](PHYSICAL_PREP_PAIRED_V44.csv).
+
+The causal PREP5-PREP6 deltas from this primary matrix are:
+
+| Point | Setup / hold delta (ns) | Arrival delta (ns) | Cells | Area | Wire | Vias | Max-cap / fanout | CTS setup/hold | GRT setup/hold/repair |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| V36 @ 3.25 | -0.0518 / -0.0173 | +0.0275 | -2,087 | -1,811.460 (-2.40%) | -89,651 (-12.24%) | -16,932 (-4.12%) | -1 / -1 | +18 / +2 | +17 / 0 / 0 |
+| V43 @ 3.20 | +0.0172 / +0.0028 | -0.0120 | -2,001 | -1,991.808 (-7.08%) | -13,048 (-4.24%) | -10,186 (-6.62%) | +2 / 0 | -15 / +4 | -16 / 0 / +5 |
+| V43 @ 3.15 | +0.0474 / -0.0031 | -0.0463 | -1,791 | -1,729.532 (-6.10%) | -10,618 (-3.45%) | -8,465 (-5.49%) | +1 / 0 | -11 / -1 | -15 / -1 / +3 |
+
+The timing behavior is architecture-dependent: PREP5 improves V43 setup at
+both periods but worsens V36 setup. The routed size/wiring benefit is present
+in all three pairs.
+
+### Critical-cone and electrical diagnosis
+
+The reported critical cone changes rather than merely losing one mux leaf:
+
+| Point | PREP6 startpoint; logic/buffers/max path fanout | PREP5 startpoint; logic/buffers/max path fanout |
+| --- | --- | --- |
+| V36 @ 3.25 | `D[1]`; 73 / 2 / 3 | `X[2]`; 80 / 5 / 3 |
+| V43 @ 3.20 | `X[0]`; 99 / 5 / 4 | `X[3]`; 94 / 4 / 4 |
+| V43 @ 3.15 | `X[0]`; 98 / 6 / 3 | `X[3]`; 96 / 3 / 3 |
+
+For V36, the PREP6 cap violation is the placed input buffer on `D[40]`; the
+fanout violation is a CTS buffer driving 22 loads against the limit of 20.
+Neither is the reported data critical path. For V43 PREP5 @ 3.20, the two cap
+violators are routed XNOR_X1 outputs with fanout 3 and are absent from the
+reported critical path. At 3.15 the sole violator is a different inserted
+BUF_X1 net. Thus there is no single M=5-related net explaining the electrical
+results. Removing a case arm changes ABC decomposition, placement and the
+discrete set of CTS/GRT repairs globally.
+
+### Seed reproducibility check
+
+Because V43 @ 3.15 changed strict closure, run
+[33975505349](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33975505349)
+executes the predeclared PREP6/PREP5 x seed-1/seed-2 check. The run and all four
+physical jobs conclude success.
+
+| Mode | Seed | Setup / hold (ns) | Arrival (ns) | Max-cap/tran/fanout | Cells / area (um^2) | Wire / vias | CTS S/H; GRT S/H/R | Strict result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| PREP6 | 1 | +0.0006 / +0.0187 | 3.2756 | 0 / 0 / 0 | 24,707 / 28,334.586 | 307,877 / 154,139 | 23/8; 30/1/0 | pass |
+| PREP5 | 1 | +0.0480 / +0.0156 | 3.2293 | 1 / 0 / 0 | 22,916 / 26,605.054 | 297,259 / 145,674 | 12/7; 15/0/3 | electrical fail |
+| PREP6 | 2 | +0.0275 / +0.0193 | 3.2539 | 0 / 0 / 0 | 24,629 / 28,383.530 | 307,313 / 154,061 | 14/5; 45/2/0 | pass |
+| PREP5 | 2 | +0.0547 / +0.0280 | 3.2242 | 0 / 0 / 0 | 22,896 / 26,536.160 | 295,716 / 145,641 | 5/5; 5/0/3 | pass |
+
+Setup and hold TNS, max-transition, max-fanout, DRC and antenna are zero in
+all four rows. Repeating seed 1 in the second commit reproduces every physical
+metric and every artifact byte size exactly (runtime and provenance metadata
+excluded). The flow is therefore deterministic at a fixed seed.
+
+Seed 2 changes PREP6 setup by +26.9 ps and PREP5 setup by +6.7 ps. The paired
+PREP5 setup advantage remains positive but ranges from +47.4 ps at seed 1 to
++27.2 ps at seed 2; its 20.2 ps spread is comparable with the PREP6 seed
+scatter. PREP5 area remains 6.10-6.51% lower, wire 3.45-3.77% shorter and vias
+5.46-5.49% lower. The seed-1 max-cap residual disappears at seed 2, proving it
+is not a stable PREP5 electrical regression.
+
+PREP5 therefore remains the engineering baseline: it is the mathematically
+minimal exact form and has a reproducible size/wiring benefit. This experiment
+does **not** establish a universal timing gain or a new robust Tmin/Fmax. It
+does show one strict-clean PREP5 implementation at 3.15 ns (seed 2), but seed
+1 is electrically non-clean and 3.10 ns was not tested. The 317.46 MHz number
+must not be promoted as a new PREP5 frequency claim from a selected seed.
+
+No immediate Tmin search is needed to decide between PREP6 and PREP5. If a new
+PREP5 frequency number becomes necessary, first define whether the target is a
+single best routed instance or closure across a declared seed set; only then
+run a narrow boundary experiment. No `g_L`, new cut/precision, V43 restructure,
+V45 or V46 was introduced here.
+
 ## Sources for the flow
 
 - [Official ORFS Docker instructions](https://openroad-flow-scripts.readthedocs.io/en/latest/user/DockerShell.html).

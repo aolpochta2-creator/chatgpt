@@ -17,9 +17,11 @@ candidate `k=5` и ставший недостижимым helper case `M=5`. Pr
 V45/V46 не создавались. Точный proof baseline и witnesses находятся в
 `docs/MATH_AUDIT_V44_PREP_TIGHTENING.md`.
 
-Главный результат этого checkpoint: functional/model/mapped проверки зелёные,
-но три новых physical точки не дали strict pass. Поэтому старые PREP6 Tmin/Fmax
-сохраняются только как история, а новый PREP5 Tmin/Fmax пока не измерен.
+Главный результат следующего controlled checkpoint: PREP5 даёт устойчивое
+уменьшение area/wire, но не универсальный timing gain. V43@3.15 PREP5 clean при
+seed=2 и имеет один max-cap residual при seed=1; fixed-seed повторяется точно.
+Поэтому PREP5 остаётся engineering baseline, а новый robust Tmin/Fmax не
+объявляется. Старые PREP6 Tmin/Fmax сохраняются только как история.
 
 ## 1. Цель и жёсткие правила
 
@@ -92,6 +94,10 @@ V45/V46 не создавались. Точный proof baseline и witnesses н
   `e53bb9e3e6530110715e88ad6ffd3931f9e4cb4b` / `33963084077`;
 - PREP5 physical commit/run:
   `8af456f6feb5f80556d37e778cae7a98ffab7f1d` / `33963569490`;
+- canonical same-run PREP6/PREP5 primary commit/run:
+  `0ea49ea973c964ccc35f106c4cb1b7c1d89f4fd0` / `33973681605`;
+- parser fix и successful V43 seed-check commit/run:
+  `26494445f38875a28c76c10d7b69019cff36ee5f` / `33975505349`;
 - последний physical-sweep code head до reporting:
   `2efb847b065f96e244db3b2c5a1032564a1a57e8`;
 - handoff-файл и его уточнения уже закоммичены в main; ссылку на актуальный main см. в заголовке/репозитории;
@@ -109,6 +115,7 @@ V45/V46 не создавались. Точный proof baseline и witnesses н
 - physical/config.mk, constraints.sdc, baseline.tcl, run.sh, report.tcl, validate_reports.py, image.txt.
 - docs/PHYSICAL_SWEEP_V44.csv — исторический 29-row PREP6 physical dataset;
 - docs/PHYSICAL_PREP5_V44.csv — три новые PREP5 physical measurements;
+- docs/PHYSICAL_PREP_PAIRED_V44.csv — controlled primary и seed-check dataset;
 - docs/MATH_AUDIT_V44_PREP_TIGHTENING.md — theorem и endpoint witnesses.
 
 Архитектурная спецификация: docs/ARCHITECTURE.md.
@@ -255,46 +262,121 @@ antenna=0, post-CTS `repair_timing` выполнен, final ODB/DEF/GDS/netlist/
 поскольку 3.15 не является strict pass; 3.10/3.05 не запускались. V39 не
 перезапускался физически и остаётся reference/control.
 
-## 11. Caveats и следующая инженерная точка
+## 11. Controlled PREP6/PREP5 reproducibility завершён
+
+Commit `0ea49ea973c964ccc35f106c4cb1b7c1d89f4fd0` создаёт build-only PREP6
+control и шеститочечную paired matrix. Production PREP5 RTL не менялся.
+PREP6 reference — literal old kernel, где относительно PREP5 восстановлен
+только case `M=5`; Git blob зафиксирован как
+`0f366d5ffea469f843e6c5d911e597f772443601`. Joint Icarus test прошёл 640
+legal pairs и отдельную проверку M=5. Обе стороны получают одинаковое имя top,
+один Yosys 0.33 mapping job и отдельный полный physical flow.
+
+Same-run mapped data:
+
+| Kernel | PREP6 cells / area | PREP5 cells / area |
+| --- | ---: | ---: |
+| V36 | 55,697 / 63,263.844 um² | 54,618 / 62,285.496 um² |
+| V43 | 17,599 / 21,837.004 um² | 17,106 / 21,120.400 um² |
+
+Primary run `33973681605`, seed=1:
+
+| Point | Mode | Setup | Hold | TNS setup/hold | Max-cap/tran/fanout | Cells | Area, um² | Wire, um | Vias | Strict result |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| V36@3.25 | PREP6 | +0.0171 | +0.0465 | 0 / 0 | 1 / 0 / 1 | 68,644 | 75,422.970 | 732,397 | 410,614 | electrical fail |
+| V36@3.25 | PREP5 | -0.0347 | +0.0292 | -0.0856 / 0 | 0 / 0 / 0 | 66,557 | 73,611.510 | 642,746 | 393,682 | setup fail |
+| V43@3.20 | PREP6 | +0.0265 | +0.0194 | 0 / 0 | 0 / 0 / 0 | 24,445 | 28,123.648 | 307,596 | 153,938 | pass |
+| V43@3.20 | PREP5 | +0.0437 | +0.0222 | 0 / 0 | 2 / 0 / 0 | 22,444 | 26,131.840 | 294,548 | 143,752 | electrical fail |
+| V43@3.15 | PREP6 | +0.0006 | +0.0187 | 0 / 0 | 0 / 0 / 0 | 24,707 | 28,334.586 | 307,877 | 154,139 | pass |
+| V43@3.15 | PREP5 | +0.0480 | +0.0156 | 0 / 0 | 1 / 0 / 0 | 22,916 | 26,605.054 | 297,259 | 145,674 | electrical fail |
+
+Все шесть implementations дошли до final ODB/DEF/GDS/netlist/SDC/SPEF,
+DRC=0, antenna=0, post-CTS `repair_timing` выполнен. Общий conclusion run —
+failure только потому, что первый parser не принял целое значение `-2` в
+max-fanout строке V36 PREP6. Raw artifact полный; исправленный parser
+восстановил валидную measurement выше. Исправление и seed trigger находятся в
+commit `26494445f38875a28c76c10d7b69019cff36ee5f`.
+
+Главные paired PREP5-PREP6 дельты:
+
+- V36@3.25: setup -0.0518 ns, area -2.40%, wire -12.24%, vias -4.12%; PREP5
+  требует на 18 больше CTS setup buffers и на 17 больше GRT setup buffers.
+- V43@3.20: setup +0.0172 ns, area -7.08%, wire -4.24%, vias -6.62%; residual
+  max-cap меняется 0 -> 2.
+- V43@3.15: setup +0.0474 ns, area -6.10%, wire -3.45%, vias -5.49%; residual
+  max-cap меняется 0 -> 1.
+
+Mapped structural diagnostic объясняет V36: несмотря на меньшие load/cells,
+unweighted max combinational depth до DFF меняется 89 -> 96. У V43 она
+остаётся 97 -> 97. Critical startpoints также меняются: V36 `D[1]` -> `X[2]`,
+V43 `X[0]` -> `X[3]`. Это глобальная ABC/placement/repair topology change, не
+простое вычитание одного mux leaf.
+
+Поскольку V43@3.15 closure различалась, run `33975505349` проверил PREP6/PREP5
+с seed 1 и 2. `GPL_RANDOM_SEED`, `GRT_SEED`, `OR_SEED` реально видны в logs.
+Run и все четыре jobs — success.
+
+| Mode | Seed | Setup | Hold | Max-cap/tran/fanout | Area, um² | Wire, um | Vias | Strict result |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| PREP6 | 1 | +0.0006 | +0.0187 | 0 / 0 / 0 | 28,334.586 | 307,877 | 154,139 | pass |
+| PREP5 | 1 | +0.0480 | +0.0156 | 1 / 0 / 0 | 26,605.054 | 297,259 | 145,674 | electrical fail |
+| PREP6 | 2 | +0.0275 | +0.0193 | 0 / 0 / 0 | 28,383.530 | 307,313 | 154,061 | pass |
+| PREP5 | 2 | +0.0547 | +0.0280 | 0 / 0 / 0 | 26,536.160 | 295,716 | 145,641 | pass |
+
+Seed-1 repeat воспроизводит все physical metrics и artifact byte sizes точно.
+Seed 2 убирает PREP5 max-cap residual. PREP5 setup advantage сохраняется при
+обоих seeds (+47.4 ps и +27.2 ps), но spread 20.2 ps сравним с PREP6 setup
+scatter 26.9 ps. Area benefit стабилен 6.10-6.51%, wire 3.45-3.77%, vias
+5.46-5.49%. Значит PREP5 residual electrical fail — physical scatter, а не
+устойчивый regression; Fmax improvement при этом не доказан.
+
+PREP5 остаётся engineering baseline: это минимальная точная математика и
+стабильно меньшая реализация. Один strict-clean PREP5@3.15 seed=2 существует,
+но seed=1 не clean и PREP5@3.10 не запускался. Новый robust Tmin/Fmax не
+объявляется; исторические PREP6 3.25/307.69 MHz и 3.15/317.46 MHz не
+переписываются как PREP5 results.
+
+Полный dataset: `docs/PHYSICAL_PREP_PAIRED_V44.csv`.
+
+## 12. Caveats и следующая инженерная точка
 
 - Это isolated product-kernel boundary, не полный divider и не AXI wrapper.
 - Только Nangate45 typical corner; нет PVT/OCV, power/IR/EM и foundry signoff.
-- PREP6 V43@3.15 с +0.0002 ns и 317.46 MHz остаётся только исторической
-  grid-defined measurement. PREP5 V43@3.15 имеет лучший setup, но один
-  max-cap violation и потому не наследует этот Fmax.
-- V36 электрически немонотонна: 3.45/3.40/3.30 ns имеют по одному small max-cap
-  residual, но независимо перестроенная 3.25 ns точка чистая. Не интерполировать
-  electrical closure между периодами.
+- V39 остаётся reference/control и в paired experiment не запускался.
+- PREP6 control измеряет только восстановление M=5 внутри kernel path, а не
+  физическую площадь шестой параллельной branch полного PREP.
+- Fixed-seed flow детерминирован, но strict electrical closure V43@3.15
+  чувствительна к seed. Нельзя выбирать лучший seed и называть это robust Fmax.
 - Текущий V39 остаётся generic 3:2 row tree, текущий V43 — generic row reducer;
   proof-level packed/Dadda структуры журналом доказаны не полностью в RTL.
-- V44WAVE остаётся timing-bound study. V45/V46 не создавались.
+- V44WAVE остаётся timing-bound study. `g_L` не внедрён; V45/V46 не создавались.
 
-Следующий разумный этап — не новая математика: сначала решить, нужен ли
-controlled reproducibility/electrical-closure rerun тех же PREP5 points или
-новый узкий bracket (например, V36 выше 3.25). Не объявлять новый Tmin до
-реального strict pass и не смешивать этот шаг с `g_L`, новым cut/precision или
-переделкой V43.
+Повторный Tmin search не нужен для выбора engineering baseline: PREP5 уже
+остаётся им. Если проекту понадобится новый PREP5 frequency claim, сначала
+нужно определить критерий — один routed instance или closure на заранее
+объявленном seed set — и только затем сделать узкий boundary run. До этого не
+переходить к 3.10 и не смешивать работу с новой математикой.
 
-## 12. Готовый блок для вставки в новый чат
+## 13. Готовый блок для вставки в новый чат
 
     Продолжаем R&D exact integer divider в https://github.com/aolpochta2-creator/chatgpt. Канонический контекст: docs/CHAT_HANDOFF_V44_2026-09-05.md.
 
-    Текущий этап — tightening той же V44 mathematics: независимый audit доказал 0 <= floor(2^96/D)-p <= 4, оба края достижимы, p+5 никогда не выбирается. Functional commit ee7cd589dc56ca1d3414bbd39dbe65d540cec589 удалил только PREP k=5 и unreachable M=5. Predictor/p, Carry_Low, signed cut, cut=46, t=32, V43 recoder и FINAL 0..3 не менялись. g_L/FINAL 0..2 доказан как будущий experiment, но не реализован. V45/V46 не создавать.
+    Математика V44 остаётся неизменной: PREP correction exact 0..4, p+5 никогда не выбирается, FINAL остаётся 0..3. PREP5 — production/engineering baseline. g_L не внедрять, V45/V46 не создавать, predictor/cut=46/t=32/V43 recoder не менять.
 
-    Directed witnesses: correction=4 при D=9232379236109516801; correction=0 при D=9340465626629537792. Model run проверил 100012 exact divisions и 200000 structural identities. Каждый full top прошёл 263 back-to-back vectors; direct V36/V39/V43 equivalence прошла 259 vectors.
+    Controlled same-run PREP6/PREP5 experiment: canonical primary commit 0ea49ea973c964ccc35f106c4cb1b7c1d89f4fd0, run 33973681605. Production PREP5 RTL byte-identical исходному baseline; PREP6 — build-only literal reference с единственным восстановленным M=5 case. Joint Icarus control test: 640 legal pairs plus M=5. Same-run mapped: V36 55697/63263.844 -> 54618/62285.496 cells/um²; V43 17599/21837.004 -> 17106/21120.400.
 
-    Successful paired EDA: commit e53bb9e3e6530110715e88ad6ffd3931f9e4cb4b, run 33963084077. Frozen PREP6 baseline fd4b23addc2e46a75d83a52f125b63656964c814 и PREP5 mapped одним Yosys 0.33/ABC и одним pinned OpenSTA. Cells/area: V36 55630/63203.994 -> 54618/62285.496; V39 38701/46533.774 -> 37990/45719.016; V43 17599/21837.004 -> 17106/21120.400. Arrival delta: V36 +0.0394 ns, V39 +0.0040 ns, V43 -0.0687 ns. DFF=168, mapped setup TNS=0 у всех.
+    Primary physical seed=1: V36@3.25 PREP6 setup +0.0171/hold +0.0465, max-cap=1, max-fanout=1; PREP5 setup -0.0347/TNS -0.0856, hold +0.0292, electrical clean. V43@3.20 PREP6 strict pass +0.0265/+0.0194; PREP5 +0.0437/+0.0222, max-cap=2. V43@3.15 PREP6 strict pass +0.0006/+0.0187; PREP5 +0.0480/+0.0156, max-cap=1. DRC/antenna/max-transition=0 и final artifacts полные во всех jobs. V36 PREP6 job красный только из-за parser integer-slack bug после полного flow; measurement восстановлена из raw artifact.
 
-    Narrow physical: commit 8af456f6feb5f80556d37e778cae7a98ffab7f1d, run 33963569490. Все jobs success как measurements и прошли полный placement/CTS/post-CTS repair/route/OpenRCX/final STA; artifacts ODB/DEF/GDS/netlist/SDC/SPEF полные. Но strict passes нет: V36@3.25 setup=-0.0538, TNS=-0.1787, hold=+0.0307, electrical clean; V43@3.20 setup=+0.0472, hold=+0.0227, max-cap=2; V43@3.15 setup=+0.0512, hold=+0.0150, max-cap=1. Max-transition/fanout/DRC/antenna=0 везде.
+    PREP5-PREP6 primary deltas: V36 setup -0.0518 ns, area -2.40%, wire -12.24%; V43@3.20 setup +0.0172 ns, area -7.08%, wire -4.24%; V43@3.15 setup +0.0474 ns, area -6.10%, wire -3.45%. V36 mapped DAG стал глубже 89->96 stages; V43 остался 97->97. Поэтому PREP5 не даёт универсального timing gain, но size/wiring benefit устойчив.
 
-    Старые V36 Tmin=3.25 ns/Fmax=307.69 MHz и V43 Tmin=3.15 ns/Fmax=317.46 MHz относятся только к PREP6 history. Для PREP5 новый Tmin/Fmax не измерен. Так как V43@3.15 не strict pass, 3.10/3.05 не запускались. V39 остаётся reference/control и физически на этом узком этапе не перезапускался.
+    Parser/seed-check commit 26494445f38875a28c76c10d7b69019cff36ee5f, successful run 33975505349. V43@3.15: PREP6 seed1 +0.0006/clean, seed2 +0.0275/clean; PREP5 seed1 +0.0480/max-cap1, seed2 +0.0547/strict clean. Seed1 repeat воспроизводится точно. PREP5 timing advantage сохраняется +47.4/+27.2 ps, area меньше на 6.10-6.51%, wire на 3.45-3.77%. Max-cap flip доказывает seed-sensitive physical scatter, не устойчивый PREP5 regression.
 
-    Важно: physical/mapped boundary kernel_v* получает один Candidate_K, поэтому измеряет removal M=5 в candidate-path mux, а не полную площадь удалённой параллельной ветви hz_prep. Full tops compile/sim подтверждены; full-top standard-cell mapping был остановлен как искусственно дорогой из-за ROM и не является arithmetic fail.
+    PREP5 остаётся engineering baseline, но новый robust Tmin/Fmax не объявлять: clean PREP5@3.15 есть только при seed2, seed1 electrical-fail, 3.10 не тестировался. Исторические PREP6 Tmin/Fmax V36=3.25 ns/307.69 MHz и V43=3.15 ns/317.46 MHz не relabel. Новый Tmin search сейчас не нужен; возвращаться к нему только после явного определения single-instance vs multi-seed closure criterion.
 
-    Полные данные: docs/MATH_AUDIT_V44_PREP_TIGHTENING.md, docs/RESULTS_V44_SYNTHESIS.md, docs/PHYSICAL_AUDIT_V44.md, docs/PHYSICAL_SWEEP_V44.csv (PREP6 history), docs/PHYSICAL_PREP5_V44.csv (PREP5). Следующий шаг — только controlled physical robustness/electrical closure или узкий новый bracket, без g_L/нового cut/precision/V43 restructure.
+    Полные данные: docs/PHYSICAL_AUDIT_V44.md и docs/PHYSICAL_PREP_PAIRED_V44.csv. Не переходить к g_L, новой precision/cut, V43 restructure или V45/V46.
 
 Источники: приложенный division_algorithm_research_log_v44(1).txt,
 docs/ARCHITECTURE.md, docs/RESULTS_V44_SYNTHESIS.md,
 docs/PHYSICAL_AUDIT_V44.md, docs/PHYSICAL_SWEEP_V44.csv,
-docs/PHYSICAL_PREP5_V44.csv, docs/MATH_AUDIT_V44_PREP_TIGHTENING.md и raw
-GitHub Actions reports.
+docs/PHYSICAL_PREP5_V44.csv, docs/PHYSICAL_PREP_PAIRED_V44.csv,
+docs/MATH_AUDIT_V44_PREP_TIGHTENING.md и raw GitHub Actions reports.
