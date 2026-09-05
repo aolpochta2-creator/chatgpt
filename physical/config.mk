@@ -15,12 +15,14 @@ export TNS_END_PERCENT = 100
 export POST_FINAL_REPORT_TCL = /work/physical/report.tcl
 export PRE_CTS_TCL = /work/physical/trace_exec.tcl
 
-# Diagnostic workaround for the ORFS post-CTS timing-repair helper, which
-# currently exits with "child killed: illegal instruction" on the pinned
-# GitHub Actions runner/toolchain. Keep CTS, routing and final extracted STA
-# enabled; results from this audit must be labeled as having no post-CTS
-# timing repair.
-export SKIP_CTS_REPAIR_TIMING = 1
+# Keep post-CTS repair_timing enabled.  The previous SIGILL was localized to
+# the subsequent kepler-formal LEC helper in the pinned official ORFS image,
+# not to OpenROAD repair_timing itself.  Kepler/naja contains AVX-512 code that
+# is not portable to the GitHub Actions runner; LEC_CHECK=0 skips only that
+# developer-oriented equivalence check while CTS, repair_timing, routing,
+# OpenRCX extraction and final STA remain enabled.
+export SKIP_CTS_REPAIR_TIMING = 0
+export LEC_CHECK = 0
 
 # Power/IR analysis needs activity and a supply model outside this experiment.
 export PWR_NETS_VOLTAGES =
