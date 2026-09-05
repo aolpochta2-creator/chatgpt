@@ -65,7 +65,11 @@ sweep.  Reset is an explicit false path.  Therefore the ranking is a genuine
 mapped cell-delay result, but not physical signoff and not an end-to-end
 divider Fmax.
 
-V44WAVE should consequently remain a timing-bound study.  The next defensible
-engineering step is physical synthesis/place-and-route of the V39 and V43
-kernels under the same floorplan and constraints, followed by SPEF-aware STA.
-No new arithmetic version is needed to interpret this checkpoint.
+V44WAVE should consequently remain a timing-bound study. The physical
+place-and-route step is now complete for V36, V39 and V43 in
+[Actions run 33949336084](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33949336084).
+The extracted result changes the fixed-boundary timing order to V36/V43/V39;
+V43 remains the area leader and is also faster than V39 in that run. See the
+[physical audit](PHYSICAL_AUDIT_V44.md) for routed area, wire, setup/hold and
+the remaining max-capacitance violations. No new arithmetic version was
+introduced to obtain that comparison.
