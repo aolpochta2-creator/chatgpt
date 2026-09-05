@@ -7,6 +7,9 @@ export LIBERTY=/work/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
 export OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad
 export YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys
 mkdir -p physical-work
+mkdir -p physical-work/tooling
+cp /OpenROAD-flow-scripts/flow/scripts/cts.tcl physical-work/tooling/
+cp /OpenROAD-flow-scripts/flow/scripts/variables.yaml physical-work/tooling/
 {
     "$OPENROAD_EXE" -version
     "$YOSYS_EXE" -V

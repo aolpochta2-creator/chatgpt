@@ -13,7 +13,7 @@ export PLACE_DENSITY = 0.45
 export NUM_CORES = 2
 export TNS_END_PERCENT = 100
 export POST_FINAL_REPORT_TCL = /work/physical/report.tcl
+export PRE_CTS_TCL = /work/physical/trace_exec.tcl
 # Power/IR analysis needs activity and a supply model outside this experiment.
 export PWR_NETS_VOLTAGES =
 export GND_NETS_VOLTAGES =
-

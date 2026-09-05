@@ -83,7 +83,9 @@ jobs:
             physical-work/flow.log
             physical-work/tie_materialization.log
             physical-work/physical_summary.json
+            physical-work/tooling/**
             physical-work/logs/**
             physical-work/reports/**
             physical-work/results/**/6_final.*
+            physical-work/results/**/4*lec*
           if-no-files-found: warn
