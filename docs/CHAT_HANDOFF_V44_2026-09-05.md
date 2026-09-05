@@ -114,54 +114,72 @@ Frozen mapped checkpoint: GitHub Actions run 33873719618, source commit c5ad5428
 
 Physical flow импортирует frozen mapped netlist, материализует только constants в tie cells, затем запускает pinned official ORFS finish: floorplan, placement, CTS, route, detailed route, OpenRCX SPEF и final STA. Платформа Nangate45 зафиксирована ORFS commit 0c914a7471340da86058dfe4d25d537f0282a508; Docker image зафиксирован digest sha256:751a77afcade9882b51427e6d9d079b8e270e7a8f4aa66df2d0659457d1c29fd.
 
-## 8. Текущий physical blocker
+## 8. Routed physical checkpoint завершён
 
-Последние попытки:
+Диагностический workaround `SKIP_CTS_REPAIR_TIMING=1` добавлен commit
+`52b78eb583e24387c63ce914f02b7c88e0f6d918`. Он отключает только падающий
+post-CTS timing-repair helper. CTS, global-route repair, detailed route,
+OpenRCX extraction и final STA остаются включёнными. Отдельный commit
+`a0a213268ff571fefc2ae830f88da8713966affc` исправил несовместимый с pinned
+OpenROAD вызов `report_units`.
 
-1. run 33944711386 — ранний сбой provenance: в Docker image нет .git для rev-parse;
-2. run 33944899194 — после исправления provenance baseline не прочитал technology LEF;
-3. run 33944984663 — после добавления tech/cell LEF placement завершился, но CTS helper упал с `child killed: illegal instruction`;
-4. run 33945291301 — добавлены trace/toolchain diagnostics, но тот же CTS failure повторился для V36/V39/V43.
+[Physical run 33949336084](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33949336084)
+завершился успешно для V36, V39 и V43. Для каждого варианта сохранены final
+ODB, DEF, GDS, Verilog netlist, SDC, nonempty OpenRCX SPEF, setup/hold и
+electrical reports. Все варианты сохранили 168 DFF.
 
-Последняя содержательная точка лога перед падением:
+| Kernel | Logical cells | Logical area, um² | Max data arrival, ns | Setup slack @ 10 ns, ns | Hold slack, ns | Max-cap violations |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| V36RCM | 58,318 | 65,615.550 | 4.9771 | 5.1888 | 0.0556 | 1 |
+| V39C42 | 41,146 | 48,677.202 | 5.3126 | 4.8358 | 0.0223 | 11 |
+| V43SJ17 | 18,754 | 22,823.864 | 5.1048 | 5.0287 | 0.0236 | 1 |
 
-    No setup violations found
-    Found 6 endpoints with hold violations.
-    Error: cts.tcl, 83 child killed: illegal instruction
+| Kernel | Routed wire, um | Vias | Detailed-route DRC | Antenna net/pin violations |
+| --- | ---: | ---: | ---: | ---: |
+| V36RCM | 653,873 | 376,623 | 0 | 0 / 0 |
+| V39C42 | 658,451 | 314,336 | 0 | 0 / 0 |
+| V43SJ17 | 287,235 | 136,321 | 0 | 0 / 0 |
 
-То есть route/SPEF/ODB/final extracted STA ещё не получены. Это не измеренная physical timing result и не timing closure.
+Все три проходят setup и hold при фиксированном периоде 10 ns; max-path TNS
+равен нулю. V36 имеет лучший setup margin. V43 лидирует по logical area и
+routed wire и в этом implementation одновременно меньше и быстрее V39.
+Measured physical Pareto pair: V36 по timing и V43 по area/wiring.
 
-Параллельный EDA regression run 33945086169 временно сломался после строгого Yosys check; commit 803aad7 исправил порядок загрузки Liberty/port directions, и последний обычный EDA run 33945386027 снова зелёный.
+Это валидное физическое измерение, но не electrical signoff: оставшиеся
+нарушения — max capacitance, 1/11/1 для V36/V39/V43. Validator корректно
+выдаёт `PHYSICAL_MEASUREMENT_VALID_BUT_TIMING_OR_ELECTRICAL_NOT_CLOSED`.
+Кроме того, post-CTS timing repair был пропущен, PVT sweep и power analysis не
+проводились, а boundary остаётся isolated kernel, не end-to-end divider.
 
-## 9. Точный следующий шаг
+## 9. Следующая инженерная точка
 
-1. В physical/config.mk добавить диагностический workaround:
-
-       export SKIP_CTS_REPAIR_TIMING = 1
-
-   Это отключает падающий post-CTS timing-repair helper, но не отключает CTS, route или final OpenRCX/SPEF STA. В журнале явно пометить результат как physical routing/timing audit без post-CTS repair, если flow пройдёт.
-
-2. Запустить physical workflow заново для всех трёх вариантов с теми же frozen netlists, floorplan, Liberty, ORFS image и SDC.
-
-3. Если flow завершится, сохранить для каждого варианта final ODB, detailed route/V, SPEF, setup/hold slack, electrical violations, cell/area breakdown и physical summary. Сравнивать только одинаково измеренные данные.
-
-4. Если следующий helper снова упадёт, взять полный job log и локализовать именно следующий failing command; не менять математику.
-
-5. Только после реального physical comparison решать, нужны ли explicit 4:2/column-packed V39, compact V43 correction-dot matrix или дальнейшая версия. До этого V44WAVE остаётся bound study.
+1. Считать run 33949336084 первым общим routed/SPEF-aware checkpoint и не
+   смешивать его с исторической unbuffered mapped-таблицей.
+2. Перед новым архитектурным выводом закрыть одинаковым способом max-cap
+   violations или повторить flow с рабочим post-CTS repair build.
+3. После electrical cleanup провести калиброванный sweep period, если нужен
+   сравнительный physical Tmin. Значения `10 ns - slack` сами по себе не
+   являются re-optimized Fmax.
+4. Если работа возвращается к RTL fidelity, отдельно реализовать и измерить
+   explicit column-packed/4:2 V39 и compact correction-dot/Dadda V43. Текущий
+   V39 использует generic 3:2 row tree, текущий V43 — generic row reducer.
+5. V44WAVE сохранять как timing-bound study. Не вводить новую математическую
+   версию без измеримого инженерного вопроса и одинакового validation flow.
 
 ## 10. Готовый блок для вставки в новый чат
 
     Мы продолжаем R&D exact integer divider. Канонический контекст: docs/CHAT_HANDOFF_V44_2026-09-05.md в https://github.com/aolpochta2-creator/chatgpt.
 
-    Не создавать новые математические версии до physical synthesis/STA.
-    Сравнивать V36RCM+V34DX+V35FF, V39C42 и V43SJ17 одинаковым flow; V44WAVE — только timing-bound study.
+    Сравниваем V36RCM+V34DX+V35FF, V39C42 и V43SJ17 одинаковым flow; V44WAVE остаётся timing-bound study.
 
-    Кодовый baseline: 803aad755dd666854c70fefbb535ebffc979c8ca.
-    Handoff-файл уже находится в main: docs/CHAT_HANDOFF_V44_2026-09-05.md.
-    Обычный EDA run 33945386027 зелёный. Physical runs 33944711386, 33944899194, 33944984663 и 33945291301 остановились до route/SPEF; последний blocker — CTS child killed: illegal instruction после hold-repair.
+    Общий routed/OpenRCX checkpoint завершён: GitHub Actions run 33949336084, flow commit a0a213268ff571fefc2ae830f88da8713966affc. CTS, detailed route и final SPEF-aware STA прошли для всех трёх; post-CTS timing-repair helper отключён через SKIP_CTS_REPAIR_TIMING=1 из-за воспроизводимого illegal-instruction crash.
 
-    Следующее действие: добавить SKIP_CTS_REPAIR_TIMING=1 в physical/config.mk, явно записать caveat, rerun physical.yml для V36/V39/V43 и получить final routed OpenRCX/SPEF STA. Никаких новых RTL/math изменений до этого.
+    Physical результаты @10 ns: V36 58,318 logical cells / 65,615.550 um² / setup slack 5.1888 ns / hold 0.0556 ns; V39 41,146 / 48,677.202 / 4.8358 / 0.0223; V43 18,754 / 22,823.864 / 5.0287 / 0.0236. V36 — timing leader; V43 — area/wiring leader и быстрее V39 в этом run.
 
-    Текущая mapped-таблица (cell-only, не post-route): V36 55,630 cells / 63,203.994 um² / Tmin 5.6779 ns; V39 38,701 / 46,533.774 / 5.5216 ns; V43 17,599 / 21,837.004 / 5.9923 ns. V43 — area leader, V39 — cell-only timing leader; физический победитель не выбран.
+    Setup/hold, detailed-route DRC и antenna checks проходят. Electrical closure не завершён: max-cap violations V36/V39/V43 = 1/11/1. Не называть checkpoint signoff или end-to-end divider Fmax.
 
-Источники: приложенный division_algorithm_research_log_v44(1).txt, docs/ARCHITECTURE.md, docs/RESULTS_V44_SYNTHESIS.md, docs/PHYSICAL_AUDIT_V44.md и raw GitHub Actions reports.
+    Следующее действие: одинаково закрыть max-cap violations или перейти на рабочий post-CTS repair build; затем при необходимости сделать period sweep. Новую математическую версию пока не создавать.
+
+Источники: приложенный division_algorithm_research_log_v44(1).txt,
+docs/ARCHITECTURE.md, docs/RESULTS_V44_SYNTHESIS.md,
+docs/PHYSICAL_AUDIT_V44.md и raw GitHub Actions reports.
