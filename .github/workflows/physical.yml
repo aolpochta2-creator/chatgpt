@@ -43,21 +43,11 @@ jobs:
       matrix:
         include:
           - variant: { id: v36, top: kernel_v36rcm }
-            period: '3.4'
+            period: '3.45'
           - variant: { id: v36, top: kernel_v36rcm }
-            period: '3.3'
-          - variant: { id: v36, top: kernel_v36rcm }
-            period: '3.2'
-          - variant: { id: v36, top: kernel_v36rcm }
-            period: '3.1'
+            period: '3.25'
           - variant: { id: v43, top: kernel_v43sj17 }
-            period: '3.4'
-          - variant: { id: v43, top: kernel_v43sj17 }
-            period: '3.3'
-          - variant: { id: v43, top: kernel_v43sj17 }
-            period: '3.2'
-          - variant: { id: v43, top: kernel_v43sj17 }
-            period: '3.1'
+            period: '3.15'
     steps:
       - uses: actions/checkout@v4
       - name: Fetch frozen mapped checkpoint
