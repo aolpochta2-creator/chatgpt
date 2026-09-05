@@ -1,22 +1,10 @@
 `default_nettype none
 
-// Physical-only copy of the historical PREP6 comparison boundary.  With no
-// defines it deliberately uses the original module names, so Yosys sees the
-// same top names and ordering as the frozen baseline.  The renamed form is
-// used only by the joint PREP5/PREP6 simulation testbench.
-`ifdef PREP6_REFERENCE_RENAMED
-`define PREP6_CORE hz_kernel_core_prep6_ref
-`define PREP6_V36 kernel_v36rcm_prep6_ref
-`define PREP6_V39 kernel_v39c42_prep6_ref
-`define PREP6_V43 kernel_v43sj17_prep6_ref
-`else
-`define PREP6_CORE hz_kernel_core
-`define PREP6_V36 kernel_v36rcm
-`define PREP6_V39 kernel_v39c42
-`define PREP6_V43 kernel_v43sj17
-`endif
-
-module `PREP6_CORE #(
+// Physical-only literal copy of the historical PREP6 comparison boundary.
+// It deliberately keeps the original module names so Yosys sees the same
+// topology and identifiers as the frozen baseline.  The production source is
+// excluded only in the reference mapping invocation.
+module hz_kernel_core #(
     parameter integer VARIANT = 36
 ) (
     input  wire Clk,
@@ -86,39 +74,34 @@ module `PREP6_CORE #(
     end
 endmodule
 
-module `PREP6_V36 (
+module kernel_v36rcm (
     input wire Clk, input wire Reset_N,
     input wire [79:0] Pred_S, input wire [79:0] Pred_C,
     input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
     input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
     output wire [67:0] Residual_Path, output wire [99:0] NX_Path
 );
-    `PREP6_CORE #(.VARIANT(36)) u_core (.*);
+    hz_kernel_core #(.VARIANT(36)) u_core (.*);
 endmodule
 
-module `PREP6_V39 (
+module kernel_v39c42 (
     input wire Clk, input wire Reset_N,
     input wire [79:0] Pred_S, input wire [79:0] Pred_C,
     input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
     input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
     output wire [67:0] Residual_Path, output wire [99:0] NX_Path
 );
-    `PREP6_CORE #(.VARIANT(39)) u_core (.*);
+    hz_kernel_core #(.VARIANT(39)) u_core (.*);
 endmodule
 
-module `PREP6_V43 (
+module kernel_v43sj17 (
     input wire Clk, input wire Reset_N,
     input wire [79:0] Pred_S, input wire [79:0] Pred_C,
     input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
     input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
     output wire [67:0] Residual_Path, output wire [99:0] NX_Path
 );
-    `PREP6_CORE #(.VARIANT(43)) u_core (.*);
+    hz_kernel_core #(.VARIANT(43)) u_core (.*);
 endmodule
-
-`undef PREP6_CORE
-`undef PREP6_V36
-`undef PREP6_V39
-`undef PREP6_V43
 
 `default_nettype wire
