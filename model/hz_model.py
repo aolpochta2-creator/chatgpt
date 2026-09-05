@@ -35,13 +35,9 @@ def _binom(n: int, k: int) -> int:
     raise AssertionError((n, k))
 
 
-def prep(dividend_hi: int, divisor: int) -> tuple[int, int, int]:
-    assert 1 << 63 <= divisor < 1 << 64
-    assert 0 <= dividend_hi < divisor
-    if divisor == 1 << 63:
-        reciprocal = 1 << 33
-        return reciprocal, 0, reciprocal * dividend_hi
-
+def predictor_p(divisor: int) -> int:
+    """Return the unchanged V44 PREP predictor for a non-boundary divisor."""
+    assert 1 << 63 < divisor < 1 << 64
     m = ((divisor - 1) >> 53) + 1
     block, d = divmod(m - 1025, 16)
     e = (m << 53) - divisor
@@ -52,10 +48,33 @@ def prep(dividend_hi: int, divisor: int) -> tuple[int, int, int]:
     cube = h3 * h3 * h3
     weights = direct_weights(d, h1, square, cube)
     numerator = sum(c * w for c, w in zip(coeffs(block), weights))
-    p = (numerator >> 46) - 1
+    return (numerator >> 46) - 1
 
-    candidates = [(1 << 96) - (p + k) * divisor for k in range(6)]
+
+def prep_prediction(divisor: int) -> tuple[int, int]:
+    """Return (p, exact correction), including the exact power boundary."""
+    assert 1 << 63 <= divisor < 1 << 64
+    if divisor == 1 << 63:
+        return 1 << 33, 0
+    p = predictor_p(divisor)
+    correction = (1 << 96) // divisor - p
+    # Proof baseline: the exact PREP correction range is 0..4.
+    assert 0 <= correction <= 4
+    assert (1 << 96) - (p + 5) * divisor < 0
+    return p, correction
+
+
+def prep(dividend_hi: int, divisor: int) -> tuple[int, int, int]:
+    assert 1 << 63 <= divisor < 1 << 64
+    assert 0 <= dividend_hi < divisor
+    if divisor == 1 << 63:
+        reciprocal = 1 << 33
+        return reciprocal, 0, reciprocal * dividend_hi
+
+    p, proven_correction = prep_prediction(divisor)
+    candidates = [(1 << 96) - (p + k) * divisor for k in range(5)]
     correction = max(k for k, residual in enumerate(candidates) if residual >= 0)
+    assert correction == proven_correction
     reciprocal = p + correction
     remainder = candidates[correction]
     assert reciprocal == (1 << 96) // divisor

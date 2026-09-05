@@ -47,6 +47,11 @@ jobs:
             synth_top: kernel_v43sj17
     steps:
       - uses: actions/checkout@v4
+      - name: Check out the frozen six-candidate baseline
+        uses: actions/checkout@v4
+        with:
+          ref: fd4b23addc2e46a75d83a52f125b63656964c814
+          path: prep6-baseline
       - name: Install open-source EDA tools
         run: |
           sudo apt-get update
@@ -54,7 +59,7 @@ jobs:
       - name: Generate deterministic tables and reducers
         run: make generate
       - name: Compile and simulate
-        run: bash scripts/run_sim.sh ${{ matrix.number }} 25
+        run: bash scripts/run_sim.sh ${{ matrix.number }} 250
       - name: Fetch pinned Nangate45 Liberty
         run: |
           mkdir -p build/lib
@@ -68,6 +73,15 @@ jobs:
           # The kernel boundary excludes common ROM/predictor/FINAL logic and
           # measures the signed cut-product region that differs by variant.
           SKIP_OPENSTA=1 bash scripts/run_synth.sh ${{ matrix.synth_top }}
+      - name: Map the six-candidate baseline with the identical tool invocation
+        env:
+          LIBERTY: ${{ github.workspace }}/build/lib/NangateOpenCellLibrary_typical.lib
+        run: |
+          (cd prep6-baseline && SKIP_OPENSTA=1 bash scripts/run_synth.sh ${{ matrix.synth_top }})
+          for suffix in yosys.log stat.rpt sta.rpt mapped.v mapped.json; do
+            cp "prep6-baseline/build/${{ matrix.synth_top }}.$suffix" \
+              "build/${{ matrix.synth_top }}.prep6.$suffix"
+          done
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,12 +93,91 @@ jobs:
             build/${{ matrix.synth_top }}.sta.rpt
             build/${{ matrix.synth_top }}.mapped.v
             build/${{ matrix.synth_top }}.mapped.json
+            build/${{ matrix.synth_top }}.prep6.yosys.log
+            build/${{ matrix.synth_top }}.prep6.stat.rpt
+            build/${{ matrix.synth_top }}.prep6.sta.rpt
+            build/${{ matrix.synth_top }}.prep6.mapped.v
+            build/${{ matrix.synth_top }}.prep6.mapped.json
+          if-no-files-found: warn
+
+  equivalence:
+    needs: model
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+      - name: Direct V36/V39/V43 back-to-back equivalence
+        run: bash scripts/run_equivalence.sh 250
+
+  full_top:
+    needs: [variant, equivalence]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: v36
+            top: divider_v36rcm
+          - id: v39
+            top: divider_v39c42
+          - id: v43
+            top: divider_v43sj17
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the frozen six-candidate baseline
+        uses: actions/checkout@v4
+        with:
+          ref: fd4b23addc2e46a75d83a52f125b63656964c814
+          path: prep6-baseline
+      - name: Install Yosys
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yosys
+      - name: Fetch pinned Nangate45 Liberty
+        run: |
+          mkdir -p build/lib
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD-flow-scripts/0c914a7471340da86058dfe4d25d537f0282a508/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib \
+            --output build/lib/NangateOpenCellLibrary_typical.lib
+      - name: Map tightened full divider
+        env:
+          LIBERTY: ${{ github.workspace }}/build/lib/NangateOpenCellLibrary_typical.lib
+        run: SKIP_OPENSTA=1 bash scripts/run_synth.sh ${{ matrix.top }}
+      - name: Map six-candidate full-divider baseline identically
+        env:
+          LIBERTY: ${{ github.workspace }}/build/lib/NangateOpenCellLibrary_typical.lib
+        run: |
+          (cd prep6-baseline && SKIP_OPENSTA=1 bash scripts/run_synth.sh ${{ matrix.top }})
+          for suffix in yosys.log stat.rpt sta.rpt mapped.v mapped.json; do
+            cp "prep6-baseline/build/${{ matrix.top }}.$suffix" \
+              "build/${{ matrix.top }}.prep6.$suffix"
+          done
+      - name: Upload full-top comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.id }}-full-comparison
+          path: |
+            build/${{ matrix.top }}.yosys.log
+            build/${{ matrix.top }}.stat.rpt
+            build/${{ matrix.top }}.sta.rpt
+            build/${{ matrix.top }}.mapped.v
+            build/${{ matrix.top }}.mapped.json
+            build/${{ matrix.top }}.prep6.yosys.log
+            build/${{ matrix.top }}.prep6.stat.rpt
+            build/${{ matrix.top }}.prep6.sta.rpt
+            build/${{ matrix.top }}.prep6.mapped.v
+            build/${{ matrix.top }}.prep6.mapped.json
           if-no-files-found: warn
 
   sta:
-    needs: variant
+    needs: [variant, equivalence, full_top]
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - name: Install OpenSTA build dependencies
@@ -112,6 +205,12 @@ jobs:
           pattern: v*-eda-reports
           path: build
           merge-multiple: true
+      - name: Download all mapped full-top comparisons
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v*-full-comparison
+          path: build
+          merge-multiple: true
       - name: Fetch pinned Nangate45 Liberty
         run: |
           mkdir -p build/lib
@@ -130,11 +229,47 @@ jobs:
               exit 1
             fi
             grep -q '^STA_REPORT_COMPLETE$' "build/${top}.opensta.rpt"
+            TOP="$top" NETLIST="build/${top}.prep6.mapped.v" \
+              tooling/OpenSTA/build/sta -no_splash -exit scripts/sta.tcl 2>&1 \
+              | tee "build/${top}.prep6.opensta.rpt"
+            grep -q '^STA_REPORT_COMPLETE$' "build/${top}.prep6.opensta.rpt"
+          done
+          for top in divider_v36rcm divider_v39c42 divider_v43sj17; do
+            TOP="$top" tooling/OpenSTA/build/sta -no_splash -exit scripts/sta.tcl 2>&1 \
+              | tee "build/${top}.opensta.rpt"
+            if grep -Eq '^(Error:|Error |\[ERROR)' "build/${top}.opensta.rpt"; then
+              echo "OpenSTA reported an error for $top" >&2
+              exit 1
+            fi
+            grep -q '^STA_REPORT_COMPLETE$' "build/${top}.opensta.rpt"
+            TOP="$top" NETLIST="build/${top}.prep6.mapped.v" \
+              tooling/OpenSTA/build/sta -no_splash -exit scripts/sta.tcl 2>&1 \
+              | tee "build/${top}.prep6.opensta.rpt"
+            grep -q '^STA_REPORT_COMPLETE$' "build/${top}.prep6.opensta.rpt"
+          done
+      - name: Build machine-readable mapped comparison
+        env:
+          LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
+        run: |
+          for top in kernel_v36rcm kernel_v39c42 kernel_v43sj17 \
+                     divider_v36rcm divider_v39c42 divider_v43sj17; do
+            python3 scripts/report_mapped.py --top "$top" --label prep5 \
+              --json "build/${top}.mapped.json" \
+              --stat "build/${top}.stat.rpt" \
+              --sta "build/${top}.opensta.rpt" --liberty "$LIBERTY" \
+              --output "build/${top}.prep5.mapped-metrics.json"
+            python3 scripts/report_mapped.py --top "$top" --label prep6-baseline \
+              --json "build/${top}.prep6.mapped.json" \
+              --stat "build/${top}.prep6.stat.rpt" \
+              --sta "build/${top}.prep6.opensta.rpt" --liberty "$LIBERTY" \
+              --output "build/${top}.prep6.mapped-metrics.json"
           done
       - name: Upload OpenSTA reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: opensta-reports
-          path: build/*.opensta.rpt
+          path: |
+            build/*.opensta.rpt
+            build/*.mapped-metrics.json
           if-no-files-found: warn

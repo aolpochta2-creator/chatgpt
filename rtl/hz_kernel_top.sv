@@ -11,6 +11,8 @@ module hz_kernel_core #(
     input  wire [79:0] Pred_C,
     input  wire signed [7:0] Pred_Wrap,
     input  wire Carry_Low,
+    // Candidate_K is three bits because the legal PREP range is 0..4.
+    // Encodings 5..7 are outside the comparison-kernel contract.
     input  wire [2:0] Candidate_K,
     input  wire [63:0] X,
     input  wire [63:0] D,
@@ -49,7 +51,6 @@ module hz_kernel_core #(
              4'sd2: begin MD = D_Base << 1; MX = X_Base << 1; end
              4'sd3: begin MD = D_Base + (D_Base << 1); MX = X_Base + (X_Base << 1); end
              4'sd4: begin MD = D_Base << 2; MX = X_Base << 2; end
-             4'sd5: begin MD = D_Base + (D_Base << 2); MX = X_Base + (X_Base << 2); end
              default: begin MD = 68'd0; MX = 100'd0; end
         endcase
     end

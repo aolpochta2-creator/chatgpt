@@ -18,6 +18,19 @@ mathematical version without the same compile, simulation, synthesis, mapping
 and physical timing flow on the relevant controls. The V44 calibrated physical
 sweep below adds no V45/V46 and changes no divider mathematics.
 
+The current proof baseline tightens only PREP from six candidates `p..p+5` to
+the exact five-candidate range `p..p+4`:
+
+```
+0 <= floor(2^96 / D) - p <= 4
+```
+
+Both endpoints are attained and `p+5` is never selected.  Predictor
+mathematics, `t=32`, `cut=46`, signed-cut logic and the current FINAL range
+`0..3` are unchanged.  The proved future `g_L`/FINAL `0..2` experiment is not
+implemented.  See the
+[mathematical audit baseline](docs/MATH_AUDIT_V44_PREP_TIGHTENING.md).
+
 ## Implemented operation
 
 The first milestone is the exact normalized primitive
@@ -43,22 +56,31 @@ export LIBERTY=/path/to/NangateOpenCellLibrary_typical.lib
 make synth-v36
 make synth-v39
 make synth-v43
+
+# Optional paired full-divider mapping (standard-cell ROM realization):
+make synth-full-v36
+make synth-full-v39
+make synth-full-v43
 ```
 
 The GitHub Actions matrix installs Icarus Verilog and Yosys, builds a pinned
 official OpenSTA, maps every comparison kernel to the same pinned Nangate45
 Liberty file, and uploads the raw reports.  Full divider tops are compiled and
-simulated; the mapped comparison deliberately isolates the structurally
-different product kernels.
+simulated back-to-back.  For this tightening, CI also maps the complete current
+and frozen six-candidate tops in paired jobs; those full-top numbers include an
+artificial standard-cell realization of the ROMs and are reported separately
+from the product-kernel comparison.
 
 ## Evidence level
 
-The Python model currently passes 100,004 randomized/directed exact divisions.
+The Python model currently passes 100,012 randomized/directed exact divisions,
+including explicit PREP correction-0 and correction-4 witnesses.
 The signed-cut, separate-Booth and joint-prefix identities pass another 200,000
 randomized structural cases. These are pre-RTL mathematical checks, not a
 substitute for compiled RTL simulation.
 
-The corrected 10 ns baseline is
+The physical values below are the preserved **six-candidate historical
+baseline**, not results of the current tightening.  The corrected 10 ns run is
 [Actions run 33951165094](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33951165094).
 V36 and V43 have full reported electrical closure there; V39 remains the
 12-max-cap reference. Post-CTS `repair_timing` is enabled. `LEC_CHECK=0` is

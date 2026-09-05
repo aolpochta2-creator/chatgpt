@@ -75,7 +75,6 @@ module hz_prep #(
                  4'sd2: multiple68 = Base << 1;
                  4'sd3: multiple68 = Base + (Base << 1);
                  4'sd4: multiple68 = Base << 2;
-                 4'sd5: multiple68 = Base + (Base << 2);
                  default: multiple68 = 68'd0;
             endcase
         end
@@ -94,17 +93,20 @@ module hz_prep #(
                  4'sd2: multiple100 = Base << 1;
                  4'sd3: multiple100 = Base + (Base << 1);
                  4'sd4: multiple100 = Base << 2;
-                 4'sd5: multiple100 = Base + (Base << 2);
                  default: multiple100 = 100'd0;
             endcase
         end
     endfunction
 
-    wire [67:0] Residual_Candidate [0:5];
-    wire [99:0] NX_Candidate [0:5];
+    // The V44 mathematical audit proves that floor(2^96 / D) - p is exactly
+    // bounded by 0..4 on the legal non-boundary domain.  Five candidates are
+    // therefore sufficient; p+5 is always negative in residual form.
+    localparam integer PREP_CANDIDATES = 5;
+    wire [67:0] Residual_Candidate [0:PREP_CANDIDATES-1];
+    wire [99:0] NX_Candidate [0:PREP_CANDIDATES-1];
     genvar k;
     generate
-        for (k = 0; k < 6; k = k + 1) begin : g_candidate
+        for (k = 0; k < PREP_CANDIDATES; k = k + 1) begin : g_candidate
             wire signed [3:0] M = Carry_Low ? k : k - 1;
             wire [67:0] MD = multiple68(M, Divisor);
             wire [99:0] MX = multiple100(M, Dividend_Hi);
@@ -134,13 +136,11 @@ module hz_prep #(
         if (!Residual_Candidate[2][67]) Correction = 3'd2;
         if (!Residual_Candidate[3][67]) Correction = 3'd3;
         if (!Residual_Candidate[4][67]) Correction = 3'd4;
-        if (!Residual_Candidate[5][67]) Correction = 3'd5;
         case (Correction)
             3'd1: begin Selected_Residual = Residual_Candidate[1]; Selected_NX = NX_Candidate[1]; end
             3'd2: begin Selected_Residual = Residual_Candidate[2]; Selected_NX = NX_Candidate[2]; end
             3'd3: begin Selected_Residual = Residual_Candidate[3]; Selected_NX = NX_Candidate[3]; end
             3'd4: begin Selected_Residual = Residual_Candidate[4]; Selected_NX = NX_Candidate[4]; end
-            3'd5: begin Selected_Residual = Residual_Candidate[5]; Selected_NX = NX_Candidate[5]; end
             default: begin Selected_Residual = Residual_Candidate[0]; Selected_NX = NX_Candidate[0]; end
         endcase
 

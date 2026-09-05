@@ -20,7 +20,12 @@ this first synthesis milestone.
 ## Two pipeline stages
 
 1. `PREP` builds the exact t=32 reciprocal state and `n32 * Dividend_Hi`.
-2. `FINAL` produces the exact 64-bit quotient and remainder.
+   The V44 proof baseline gives the exact correction range `0..4`, so the
+   current RTL evaluates `p..p+4`.  Historical runs through the calibrated
+   physical sweep evaluated the overcomplete range `p..p+5`.
+2. `FINAL` produces the exact 64-bit quotient and remainder.  Its implemented
+   correction range remains `0..3`; the separately proved `g_L`/`0..2` idea is
+   not part of this RTL.
 
 All three tops have the same interface, registers, predictor ROMs, V33 direct
 weights, candidate selection and FINAL logic. They differ only in the two
@@ -62,6 +67,13 @@ separate optional control run, but it is not part of the reported kernel
 checkpoint because it is much slower and dominated by the artificial ROM
 realization.
 
+`Candidate_K` remains three bits at this boundary because PREP correction 4 is
+reachable; its legal range is now `0..4`.  The tightened kernel removes the
+unreachable `M=5` product choice.  Paired CI also maps each complete divider at
+the frozen six-candidate baseline and at the current five-candidate source so
+the common PREP area delta is measured rather than inferred from the isolated
+kernel alone.
+
 ## Current implementation boundary
 
 The PREP product trees have explicit, fixed CSA reduction depths. The common
@@ -70,3 +82,8 @@ its upstream products are still inferred with `*`; it is common to all three
 and must not be used to claim that the original V35 unified bit heap has been
 fully laid out. First CI results are engineering measurements, not a proof that
 the final physical implementation has been optimized.
+
+The PREP `6 -> 5` change is a tightening of the same V44 mathematics, not a new
+algorithm version.  See
+[`MATH_AUDIT_V44_PREP_TIGHTENING.md`](MATH_AUDIT_V44_PREP_TIGHTENING.md) for
+the exact theorem, endpoint witnesses and frozen non-changes.

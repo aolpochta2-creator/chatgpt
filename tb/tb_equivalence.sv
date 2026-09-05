@@ -1,11 +1,7 @@
 `timescale 1ns/1ps
 `default_nettype none
 
-`ifndef DUT_MODULE
-`define DUT_MODULE divider_v36rcm
-`endif
-
-module tb_divider;
+module tb_equivalence;
     localparam integer MAX_VECTORS = 100128;
 
     reg Clk = 1'b0;
@@ -13,10 +9,10 @@ module tb_divider;
     reg In_Valid = 1'b0;
     reg [63:0] Dividend_Hi = 64'd0;
     reg [63:0] Divisor = 64'h8000000000000000;
-    wire Out_Valid;
-    wire Out_Error;
-    wire [63:0] Quotient;
-    wire [63:0] Remainder;
+    wire V36_Valid, V39_Valid, V43_Valid;
+    wire V36_Error, V39_Error, V43_Error;
+    wire [63:0] V36_Q, V39_Q, V43_Q;
+    wire [63:0] V36_R, V39_R, V43_R;
 
     integer Seed;
     integer Tests;
@@ -32,11 +28,23 @@ module tb_divider;
     reg [63:0] Expected_Q [0:MAX_VECTORS-1];
     reg [63:0] Expected_R [0:MAX_VECTORS-1];
 
-    `DUT_MODULE u_dut (
+    divider_v36rcm u_v36 (
         .Clk(Clk), .Reset_N(Reset_N), .In_Valid(In_Valid),
         .Dividend_Hi(Dividend_Hi), .Divisor(Divisor),
-        .Out_Valid(Out_Valid), .Out_Error(Out_Error),
-        .Quotient(Quotient), .Remainder(Remainder)
+        .Out_Valid(V36_Valid), .Out_Error(V36_Error),
+        .Quotient(V36_Q), .Remainder(V36_R)
+    );
+    divider_v39c42 u_v39 (
+        .Clk(Clk), .Reset_N(Reset_N), .In_Valid(In_Valid),
+        .Dividend_Hi(Dividend_Hi), .Divisor(Divisor),
+        .Out_Valid(V39_Valid), .Out_Error(V39_Error),
+        .Quotient(V39_Q), .Remainder(V39_R)
+    );
+    divider_v43sj17 u_v43 (
+        .Clk(Clk), .Reset_N(Reset_N), .In_Valid(In_Valid),
+        .Dividend_Hi(Dividend_Hi), .Divisor(Divisor),
+        .Out_Valid(V43_Valid), .Out_Error(V43_Error),
+        .Quotient(V43_Q), .Remainder(V43_R)
     );
 
     always #5 Clk = ~Clk;
@@ -54,7 +62,7 @@ module tb_divider;
         reg [127:0] Wide_Quotient;
         begin
             if (!D[63] || X >= D || Vector_Count >= MAX_VECTORS)
-                $fatal(1, "invalid test vector X=%016x D=%016x", X, D);
+                $fatal(1, "invalid equivalence vector X=%016x D=%016x", X, D);
             Wide_Numerator = {X, 64'b0};
             Wide_Quotient = Wide_Numerator / D;
             Vector_X[Vector_Count] = X;
@@ -68,44 +76,41 @@ module tb_divider;
     task automatic check_output;
         input integer Expected_Index;
         begin
-            if (Out_Error ||
-                Quotient !== Expected_Q[Expected_Index] ||
-                Remainder !== Expected_R[Expected_Index]) begin
-                $display("FAIL index=%0d X=%016x D=%016x Q=%016x expected=%016x R=%016x expected=%016x error=%b",
-                         Expected_Index,
-                         Vector_X[Expected_Index], Vector_D[Expected_Index],
-                         Quotient, Expected_Q[Expected_Index],
-                         Remainder, Expected_R[Expected_Index], Out_Error);
+            if ({V36_Valid, V39_Valid, V43_Valid} !== 3'b111 ||
+                {V36_Error, V39_Error, V43_Error} !== 3'b000 ||
+                V36_Q !== V39_Q || V36_Q !== V43_Q ||
+                V36_R !== V39_R || V36_R !== V43_R ||
+                V36_Q !== Expected_Q[Expected_Index] ||
+                V36_R !== Expected_R[Expected_Index]) begin
+                $display("EQUIVALENCE FAIL index=%0d X=%016x D=%016x", Expected_Index,
+                         Vector_X[Expected_Index], Vector_D[Expected_Index]);
+                $display("V36 valid/error/q/r=%b/%b/%016x/%016x", V36_Valid, V36_Error, V36_Q, V36_R);
+                $display("V39 valid/error/q/r=%b/%b/%016x/%016x", V39_Valid, V39_Error, V39_Q, V39_R);
+                $display("V43 valid/error/q/r=%b/%b/%016x/%016x", V43_Valid, V43_Error, V43_Q, V43_R);
+                $display("expected q/r=%016x/%016x", Expected_Q[Expected_Index], Expected_R[Expected_Index]);
                 $fatal(1);
             end
         end
     endtask
 
     initial begin
-        Seed = 32'h563943;
-        Tests = 2000;
+        Seed = 32'h364343;
+        Tests = 500;
         Vector_Count = 0;
-        if (!$value$plusargs("SEED=%d", Seed)) Seed = 32'h563943;
-        if (!$value$plusargs("TESTS=%d", Tests)) Tests = 2000;
-        if (Tests < 0 || Tests > MAX_VECTORS - 32)
+        if (!$value$plusargs("SEED=%d", Seed)) Seed = 32'h364343;
+        if (!$value$plusargs("TESTS=%d", Tests)) Tests = 500;
+        if (Tests < 0 || Tests > MAX_VECTORS - 16)
             $fatal(1, "invalid TESTS=%0d", Tests);
         Seed = $urandom(Seed);
 
-        // Exact power boundary, legal-domain endpoints and predictor-cell
-        // boundaries.  The two named audit witnesses exercise corrections 4
-        // and 0 respectively.
         add_vector(64'd0,                64'h8000000000000000);
         add_vector(64'h7fffffffffffffff, 64'h8000000000000000);
         add_vector(64'h8000000000000000, 64'h8000000000000001);
-        add_vector(64'h801ffffffffffffd, 64'h801ffffffffffffe);
-        add_vector(64'h801ffffffffffffe, 64'h801fffffffffffff);
         add_vector(64'h801fffffffffffff, 64'h8020000000000000);
-        add_vector(64'h8020000000000000, 64'h8020000000000001); // correction=4
-        add_vector(64'h819fffffdfffffff, 64'h819fffffe0000000); // correction=0
+        add_vector(64'h8020000000000000, 64'h8020000000000001);
+        add_vector(64'h819fffffdfffffff, 64'h819fffffe0000000);
         add_vector(64'hbfffffffffffffff, 64'hc000000000000000);
         add_vector(64'hffdfffffffffffff, 64'hffe0000000000000);
-        add_vector(64'hfffffffffffffffd, 64'hfffffffffffffffe);
-        add_vector(64'd0,                64'hffffffffffffffff);
         add_vector(64'hfffffffffffffffe, 64'hffffffffffffffff);
 
         for (Index = 0; Index < Tests; Index = Index + 1) begin
@@ -121,16 +126,12 @@ module tb_divider;
         Send_Index = 0;
         Receive_Index = 0;
         Cycles = 0;
-
-        // Keep In_Valid asserted between adjacent vectors.  This checks the
-        // advertised one-input-per-cycle pipeline contract, not just isolated
-        // request/response transactions.
         while (Receive_Index < Vector_Count) begin
             @(negedge Clk);
             Cycles = Cycles + 1;
             if (Cycles > Vector_Count + 8)
-                $fatal(1, "pipeline timeout sent=%0d received=%0d", Send_Index, Receive_Index);
-            if (Out_Valid) begin
+                $fatal(1, "equivalence timeout sent=%0d received=%0d", Send_Index, Receive_Index);
+            if (V36_Valid || V39_Valid || V43_Valid) begin
                 check_output(Receive_Index);
                 Receive_Index = Receive_Index + 1;
             end
@@ -143,12 +144,9 @@ module tb_divider;
                 In_Valid = 1'b0;
             end
         end
-
         @(negedge Clk);
         In_Valid = 1'b0;
-        if (Send_Index != Vector_Count)
-            $fatal(1, "not all vectors were sent");
-        $display("PASS back-to-back vectors=%0d", Vector_Count);
+        $display("PASS V36/V39/V43 exact back-to-back equivalence vectors=%0d", Vector_Count);
         $finish;
     end
 endmodule

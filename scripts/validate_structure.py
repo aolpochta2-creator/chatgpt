@@ -98,6 +98,8 @@ def main() -> None:
         sh, ch = signed(u, 34), signed(v, 34)
         a = sh + ch + wrap * (1 << 34)
         assert a + carry_low - 1 == (numerator >> 46) - 1
+        prep_correction = (1 << 96) // divisor - ((numerator >> 46) - 1)
+        assert 0 <= prep_correction <= 4
 
         x = rng.getrandbits(64)
         binary = (u + v + (wrap - (u >> 33) - (v >> 33)) * (1 << 34)) * x

@@ -1,4 +1,4 @@
-.PHONY: generate model structure test test-v36 test-v39 test-v43 synth-v36 synth-v39 synth-v43 synth-full-v36 synth-full-v39 synth-full-v43
+.PHONY: generate model structure test test-v36 test-v39 test-v43 test-equivalence synth-v36 synth-v39 synth-v43 synth-full-v36 synth-full-v39 synth-full-v43
 
 TESTS ?= 2000
 
@@ -12,7 +12,7 @@ model:
 structure:
 	PYTHONPATH=. python3 scripts/validate_structure.py
 
-test: test-v36 test-v39 test-v43
+test: test-v36 test-v39 test-v43 test-equivalence
 
 test-v36: generate
 	bash scripts/run_sim.sh 36 $(TESTS)
@@ -22,6 +22,9 @@ test-v39: generate
 
 test-v43: generate
 	bash scripts/run_sim.sh 43 $(TESTS)
+
+test-equivalence: generate
+	bash scripts/run_equivalence.sh $(TESTS)
 
 synth-v36: generate
 	bash scripts/run_synth.sh kernel_v36rcm
