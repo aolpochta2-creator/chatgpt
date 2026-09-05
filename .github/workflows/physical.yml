@@ -34,25 +34,27 @@ jobs:
           path: image-lock.txt
 
   physical:
+    name: physical (${{ matrix.variant.id }}, ${{ matrix.variant.top }}, ${{ matrix.period }} ns)
     needs: toolchain
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        include:
+        variant:
           - id: v36
             top: kernel_v36rcm
           - id: v39
             top: kernel_v39c42
           - id: v43
             top: kernel_v43sj17
+        period: ['6.0', '5.5', '5.0', '4.5']
     steps:
       - uses: actions/checkout@v4
       - name: Fetch frozen mapped checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.id }}-eda-reports
+          name: ${{ matrix.variant.id }}-eda-reports
           path: build
           run-id: 33873719618
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -69,14 +71,15 @@ jobs:
         run: |
           docker run --rm --entrypoint bash \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
-            -e TOP=${{ matrix.top }} \
+            -e TOP=${{ matrix.variant.top }} \
+            -e CLOCK_PERIOD=${{ matrix.period }} \
             -e ORFS_IMAGE \
             "$ORFS_IMAGE" physical/run.sh
       - name: Upload complete physical evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.id }}-physical-reports
+          name: ${{ matrix.variant.id }}-p${{ matrix.period }}-physical-reports
           path: |
             physical-work/toolchain.txt
             physical-work/mapped_corrected.rpt
@@ -89,3 +92,4 @@ jobs:
             physical-work/results/**/6_final.*
             physical-work/results/**/4*lec*
           if-no-files-found: warn
+          retention-days: 14

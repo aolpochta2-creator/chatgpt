@@ -17,7 +17,8 @@ report_checks -path_delay min -format full_clock_expanded \
     > $::env(REPORTS_DIR)/physical_hold.rpt
 report_worst_slack -max -digits 4 > $::env(REPORTS_DIR)/physical_slack.rpt
 report_worst_slack -min -digits 4 >> $::env(REPORTS_DIR)/physical_slack.rpt
-report_tns -digits 4 >> $::env(REPORTS_DIR)/physical_slack.rpt
+report_tns -max -digits 4 >> $::env(REPORTS_DIR)/physical_slack.rpt
+report_tns -min -digits 4 >> $::env(REPORTS_DIR)/physical_slack.rpt
 report_check_types -max_slew -max_capacitance -max_fanout -violators -digits 4 \
     > $::env(REPORTS_DIR)/physical_electrical.rpt
 
@@ -44,4 +45,3 @@ puts $f "dffs\t$flop_count"
 puts $f "logical_cell_area_um2\t$logical_area"
 close $f
 puts "PHYSICAL_CHECKPOINT_COMPLETE SPEF=$spef DFFS=$flop_count"
-
