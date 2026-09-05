@@ -71,11 +71,26 @@ jobs:
         run: |
           for top in kernel_v36rcm kernel_v43sj17; do
             SKIP_OPENSTA=1 bash scripts/run_synth.sh "$top"
+            for suffix in yosys.log stat.rpt sta.rpt mapped.v mapped.json; do
+              mv "build/${top}.${suffix}" "build/${top}.prep5.${suffix}"
+            done
           done
-          for top in kernel_v36rcm_prep6_ref kernel_v43sj17_prep6_ref; do
-            EXTRA_RTL_FILES=physical/prep6_reference_kernel.sv \
-              SKIP_OPENSTA=1 bash scripts/run_synth.sh "$top"
+          reference_rtl=$(find rtl -maxdepth 1 -name '*.sv' -print | sort \
+            | sed 's#rtl/hz_kernel_top.sv#physical/prep6_reference_kernel.sv#' \
+            | tr '\n' ' ')
+          for top in kernel_v36rcm kernel_v43sj17; do
+            RTL_FILES_OVERRIDE="$reference_rtl" SKIP_OPENSTA=1 \
+              bash scripts/run_synth.sh "$top"
+            for suffix in yosys.log stat.rpt sta.rpt mapped.v mapped.json; do
+              mv "build/${top}.${suffix}" "build/${top}.prep6.${suffix}"
+            done
           done
+          printf '%s  %s\n' \
+            502ddbdb4b82e1cd1806ffe56a6fa4d2b08e7736dd8fb880bf0bee79e6fecb7f build/kernel_v36rcm.prep5.mapped.v \
+            96a9d251ce879e27b8b9e970b0b9526b79d281b3ba9eb7453884acd3682f3428 build/kernel_v43sj17.prep5.mapped.v \
+            dbc87f2f5ece15d84551e86be3c1141c213956f5a07bd746f805562f49051d7d build/kernel_v36rcm.prep6.mapped.v \
+            2a98faf76b5f51f60eb97063261cd26b1268cba20c2f131e83f50a775ef73371 build/kernel_v43sj17.prep6.mapped.v \
+            | sha256sum --check
           {
             yosys -V
             printf 'SOURCE_COMMIT=%s\n' "$GITHUB_SHA"
@@ -108,12 +123,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { variant: v36, mode: prep6, top: kernel_v36rcm_prep6_ref, period: '3.25', seed: 1 }
-          - { variant: v36, mode: prep5, top: kernel_v36rcm, period: '3.25', seed: 1 }
-          - { variant: v43, mode: prep6, top: kernel_v43sj17_prep6_ref, period: '3.20', seed: 1 }
-          - { variant: v43, mode: prep5, top: kernel_v43sj17, period: '3.20', seed: 1 }
-          - { variant: v43, mode: prep6, top: kernel_v43sj17_prep6_ref, period: '3.15', seed: 1 }
-          - { variant: v43, mode: prep5, top: kernel_v43sj17, period: '3.15', seed: 1 }
+          - { variant: v36, mode: prep6, top: kernel_v36rcm, netlist: kernel_v36rcm.prep6, period: '3.25', seed: 1 }
+          - { variant: v36, mode: prep5, top: kernel_v36rcm, netlist: kernel_v36rcm.prep5, period: '3.25', seed: 1 }
+          - { variant: v43, mode: prep6, top: kernel_v43sj17, netlist: kernel_v43sj17.prep6, period: '3.20', seed: 1 }
+          - { variant: v43, mode: prep5, top: kernel_v43sj17, netlist: kernel_v43sj17.prep5, period: '3.20', seed: 1 }
+          - { variant: v43, mode: prep6, top: kernel_v43sj17, netlist: kernel_v43sj17.prep6, period: '3.15', seed: 1 }
+          - { variant: v43, mode: prep5, top: kernel_v43sj17, netlist: kernel_v43sj17.prep5, period: '3.15', seed: 1 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -134,6 +149,7 @@ jobs:
           docker run --rm --entrypoint bash \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             -e "TOP=${{ matrix.top }}" \
+            -e "MAPPED_NETLIST=${{ matrix.netlist }}" \
             -e "CLOCK_PERIOD=${{ matrix.period }}" \
             -e "PREP_MODE=${{ matrix.mode }}" \
             -e "PHYSICAL_SEED=${{ matrix.seed }}" \
@@ -179,10 +195,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { mode: prep6, top: kernel_v43sj17_prep6_ref, seed: 1 }
-          - { mode: prep5, top: kernel_v43sj17, seed: 1 }
-          - { mode: prep6, top: kernel_v43sj17_prep6_ref, seed: 2 }
-          - { mode: prep5, top: kernel_v43sj17, seed: 2 }
+          - { mode: prep6, top: kernel_v43sj17, netlist: kernel_v43sj17.prep6, seed: 1 }
+          - { mode: prep5, top: kernel_v43sj17, netlist: kernel_v43sj17.prep5, seed: 1 }
+          - { mode: prep6, top: kernel_v43sj17, netlist: kernel_v43sj17.prep6, seed: 2 }
+          - { mode: prep5, top: kernel_v43sj17, netlist: kernel_v43sj17.prep5, seed: 2 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -203,6 +219,7 @@ jobs:
           docker run --rm --entrypoint bash \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             -e "TOP=${{ matrix.top }}" \
+            -e "MAPPED_NETLIST=${{ matrix.netlist }}" \
             -e "CLOCK_PERIOD=3.15" \
             -e "PREP_MODE=${{ matrix.mode }}" \
             -e "PHYSICAL_SEED=${{ matrix.seed }}" \

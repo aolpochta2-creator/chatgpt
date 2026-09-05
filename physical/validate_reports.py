@@ -8,12 +8,14 @@ from pathlib import Path
 
 root, top, expected_period = Path(sys.argv[1]), sys.argv[2], float(sys.argv[3])
 prep_mode = os.environ['PREP_MODE']
+mapped_netlist = os.environ['MAPPED_NETLIST']
 experiment_label = os.environ['EXPERIMENT_LABEL']
 source_commit = os.environ['SOURCE_COMMIT']
 source_run_id = int(os.environ['SOURCE_RUN_ID'])
 physical_seed = int(os.environ['PHYSICAL_SEED'])
 flow_runtime_seconds = int(os.environ['FLOW_RUNTIME_SECONDS'])
 assert prep_mode in {'prep5', 'prep6'}
+assert mapped_netlist.endswith(f'.{prep_mode}')
 assert experiment_label in {'paired-primary', 'v43-seed-check'}
 assert re.fullmatch(r'[0-9a-f]{40}', source_commit)
 assert source_run_id > 0 and physical_seed > 0 and flow_runtime_seconds > 0
@@ -131,6 +133,7 @@ grt_design_buffers = sum(map(int, re.findall(r'Inserted (\d+) buffers in \d+ net
 
 summary = {'experiment_label': experiment_label,
            'prep_mode': prep_mode,
+           'mapped_netlist': mapped_netlist,
            'source_commit': source_commit,
            'source_run_id': source_run_id,
            'physical_seed': physical_seed,

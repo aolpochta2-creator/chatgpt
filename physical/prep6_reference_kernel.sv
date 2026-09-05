@@ -1,10 +1,22 @@
 `default_nettype none
 
-// Physical-only control that exactly restores the historical PREP6 M=5
-// helper.  Production V44 RTL remains PREP5 and does not instantiate this
-// module.  Keeping this source separate also prevents the control switch from
-// perturbing PREP5 elaboration/mapping.
-module hz_kernel_core_prep6_ref #(
+// Physical-only copy of the historical PREP6 comparison boundary.  With no
+// defines it deliberately uses the original module names, so Yosys sees the
+// same top names and ordering as the frozen baseline.  The renamed form is
+// used only by the joint PREP5/PREP6 simulation testbench.
+`ifdef PREP6_REFERENCE_RENAMED
+`define PREP6_CORE hz_kernel_core_prep6_ref
+`define PREP6_V36 kernel_v36rcm_prep6_ref
+`define PREP6_V39 kernel_v39c42_prep6_ref
+`define PREP6_V43 kernel_v43sj17_prep6_ref
+`else
+`define PREP6_CORE hz_kernel_core
+`define PREP6_V36 kernel_v36rcm
+`define PREP6_V39 kernel_v39c42
+`define PREP6_V43 kernel_v43sj17
+`endif
+
+module `PREP6_CORE #(
     parameter integer VARIANT = 36
 ) (
     input  wire Clk,
@@ -28,6 +40,9 @@ module hz_kernel_core_prep6_ref #(
         if (VARIANT == 36) begin : g_v36
             hz_product_v36 #(.W(68)) u_pd (.U(U), .V(V), .Wrap(Pred_Wrap), .X(D), .Sum(PD_S), .Carry(PD_C));
             hz_product_v36 #(.W(100)) u_px (.U(U), .V(V), .Wrap(Pred_Wrap), .X(X), .Sum(PX_S), .Carry(PX_C));
+        end else if (VARIANT == 39) begin : g_v39
+            hz_product_v39 #(.W(68)) u_pd (.U(U), .V(V), .Wrap(Pred_Wrap), .X(D), .Sum(PD_S), .Carry(PD_C));
+            hz_product_v39 #(.W(100)) u_px (.U(U), .V(V), .Wrap(Pred_Wrap), .X(X), .Sum(PX_S), .Carry(PX_C));
         end else begin : g_v43
             hz_product_v43 #(.W(68)) u_pd (.U(U), .V(V), .X(D), .Sum(PD_S), .Carry(PD_C));
             hz_product_v43 #(.W(100)) u_px (.U(U), .V(V), .X(X), .Sum(PX_S), .Carry(PX_C));
@@ -71,24 +86,39 @@ module hz_kernel_core_prep6_ref #(
     end
 endmodule
 
-module kernel_v36rcm_prep6_ref (
+module `PREP6_V36 (
     input wire Clk, input wire Reset_N,
     input wire [79:0] Pred_S, input wire [79:0] Pred_C,
     input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
     input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
     output wire [67:0] Residual_Path, output wire [99:0] NX_Path
 );
-    hz_kernel_core_prep6_ref #(.VARIANT(36)) u_core (.*);
+    `PREP6_CORE #(.VARIANT(36)) u_core (.*);
 endmodule
 
-module kernel_v43sj17_prep6_ref (
+module `PREP6_V39 (
     input wire Clk, input wire Reset_N,
     input wire [79:0] Pred_S, input wire [79:0] Pred_C,
     input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
     input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
     output wire [67:0] Residual_Path, output wire [99:0] NX_Path
 );
-    hz_kernel_core_prep6_ref #(.VARIANT(43)) u_core (.*);
+    `PREP6_CORE #(.VARIANT(39)) u_core (.*);
 endmodule
+
+module `PREP6_V43 (
+    input wire Clk, input wire Reset_N,
+    input wire [79:0] Pred_S, input wire [79:0] Pred_C,
+    input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
+    input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
+    output wire [67:0] Residual_Path, output wire [99:0] NX_Path
+);
+    `PREP6_CORE #(.VARIANT(43)) u_core (.*);
+endmodule
+
+`undef PREP6_CORE
+`undef PREP6_V36
+`undef PREP6_V39
+`undef PREP6_V43
 
 `default_nettype wire

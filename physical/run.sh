@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 : "${TOP:?TOP is required}"
+: "${MAPPED_NETLIST:?MAPPED_NETLIST is required}"
 : "${CLOCK_PERIOD:=10.0}"
 : "${PREP_MODE:?PREP_MODE is required}"
 : "${PHYSICAL_SEED:?PHYSICAL_SEED is required}"
 : "${EXPERIMENT_LABEL:?EXPERIMENT_LABEL is required}"
 : "${SOURCE_COMMIT:?SOURCE_COMMIT is required}"
 : "${SOURCE_RUN_ID:?SOURCE_RUN_ID is required}"
-export CLOCK_PERIOD PREP_MODE PHYSICAL_SEED EXPERIMENT_LABEL SOURCE_COMMIT SOURCE_RUN_ID
+export TOP MAPPED_NETLIST CLOCK_PERIOD PREP_MODE PHYSICAL_SEED EXPERIMENT_LABEL SOURCE_COMMIT SOURCE_RUN_ID
 cd /work
 source /OpenROAD-flow-scripts/env.sh
 export LIBERTY=/work/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
@@ -22,6 +23,7 @@ cp /OpenROAD-flow-scripts/flow/scripts/variables.yaml physical-work/tooling/
     "$YOSYS_EXE" -V
     printf 'ORFS_IMAGE=%s\n' "$ORFS_IMAGE"
     printf 'CLOCK_PERIOD_NS=%s\n' "$CLOCK_PERIOD"
+    printf 'MAPPED_NETLIST=%s\n' "$MAPPED_NETLIST"
     printf 'PREP_MODE=%s\n' "$PREP_MODE"
     printf 'PHYSICAL_SEED=%s\n' "$PHYSICAL_SEED"
     printf 'EXPERIMENT_LABEL=%s\n' "$EXPERIMENT_LABEL"
@@ -29,7 +31,7 @@ cp /OpenROAD-flow-scripts/flow/scripts/variables.yaml physical-work/tooling/
     printf 'SOURCE_RUN_ID=%s\n' "$SOURCE_RUN_ID"
     printf '%s\n' 'MAPPED_SOURCE=same-commit same-workflow paired mapping job'
     sha256sum /OpenROAD-flow-scripts/flow/Makefile
-    sha256sum "$LIBERTY" "build/${TOP}.mapped.v" build/paired_mapping_toolchain.txt
+    sha256sum "$LIBERTY" "build/${MAPPED_NETLIST}.mapped.v" build/paired_mapping_toolchain.txt
     printf '%s\n' '--- paired mapping toolchain ---'
     sed -n '1,120p' build/paired_mapping_toolchain.txt
 } > physical-work/toolchain.txt
@@ -53,7 +55,7 @@ if grep -Eq '^(Error:|Error |\[ERROR)' physical-work/mapped_corrected.rpt; then 
 # remapping: physical implementation starts from the archived mapped logic.
 "$YOSYS_EXE" -Q -p "
     read_liberty -lib $LIBERTY;
-    read_verilog build/${TOP}.mapped.v;
+    read_verilog build/${MAPPED_NETLIST}.mapped.v;
     hierarchy -check -top $TOP;
     hilomap -hicell LOGIC1_X1 Z -locell LOGIC0_X1 Z;
     write_verilog -noattr -noexpr build/${TOP}.physical_input.v;

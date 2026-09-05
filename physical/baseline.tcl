@@ -1,7 +1,7 @@
 read_lef /work/platforms/nangate45/lef/NangateOpenCellLibrary.tech.lef
 read_lef /work/platforms/nangate45/lef/NangateOpenCellLibrary.macro.mod.lef
 read_liberty $::env(LIBERTY)
-read_verilog /work/build/$::env(TOP).mapped.v
+read_verilog /work/build/$::env(MAPPED_NETLIST).mapped.v
 link_design $::env(TOP)
 read_sdc /work/physical/constraints.sdc
 report_units
