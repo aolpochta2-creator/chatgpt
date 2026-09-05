@@ -85,11 +85,15 @@ jobs:
               mv "build/${top}.${suffix}" "build/${top}.prep6.${suffix}"
             done
           done
+          test "$(git hash-object physical/prep6_reference_kernel.sv)" = \
+            0f366d5ffea469f843e6c5d911e597f772443601
           printf '%s  %s\n' \
             502ddbdb4b82e1cd1806ffe56a6fa4d2b08e7736dd8fb880bf0bee79e6fecb7f build/kernel_v36rcm.prep5.mapped.v \
             96a9d251ce879e27b8b9e970b0b9526b79d281b3ba9eb7453884acd3682f3428 build/kernel_v43sj17.prep5.mapped.v \
-            dbc87f2f5ece15d84551e86be3c1141c213956f5a07bd746f805562f49051d7d build/kernel_v36rcm.prep6.mapped.v \
-            2a98faf76b5f51f60eb97063261cd26b1268cba20c2f131e83f50a775ef73371 build/kernel_v43sj17.prep6.mapped.v \
+            007004fe926ca08d196e2f38fb88a6bfd40eed7f21c72f4eed2109d25421076e build/kernel_v36rcm.prep5.stat.rpt \
+            6254f7107f15dcda4cddcbbf13c8e36c350e59ccafe8d6b93e8f569b2ac53679 build/kernel_v43sj17.prep5.stat.rpt \
+            d0a907a8ba495974ba433a21485a2351a2cda7f2be4e850c8a88133d37b8ed5b build/kernel_v36rcm.prep6.stat.rpt \
+            d691ad4b94a63cab79c7c4f033713813c72e6e349a2208e89cc2a247f38c9493 build/kernel_v43sj17.prep6.stat.rpt \
             | sha256sum --check
           {
             yosys -V

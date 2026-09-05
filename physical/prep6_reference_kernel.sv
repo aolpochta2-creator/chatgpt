@@ -1,9 +1,7 @@
 `default_nettype none
 
-// Physical-only literal copy of the historical PREP6 comparison boundary.
-// It deliberately keeps the original module names so Yosys sees the same
-// topology and identifiers as the frozen baseline.  The production source is
-// excluded only in the reference mapping invocation.
+// ROM-excluded comparison boundary for the only datapath region that differs
+// between V36, V39 and V43.  Inputs are the signed V33 predictor CSA state.
 module hz_kernel_core #(
     parameter integer VARIANT = 36
 ) (
