@@ -56,9 +56,23 @@ The signed-cut, separate-Booth and joint-prefix identities pass another 200,000
 randomized structural cases. These are pre-RTL mathematical checks, not a
 substitute for compiled RTL simulation.
 
-The first mapped checkpoint is complete. V43 has the smallest mapped netlist
-and V39 the shortest path under the original unbuffered assumptions. The
-[physical audit](docs/PHYSICAL_AUDIT_V44.md) documents the load-unit correction,
-high-fanout paths, legal-input restrictions and incomplete column packing that
-limit those conclusions. The historical numbers remain in
+The routed physical checkpoint is complete in
+[Actions run 33949336084](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33949336084).
+The same frozen mapped kernels were placed, clocked, routed and analyzed from
+final OpenRCX SPEF at the same 10 ns constraint.
+
+| Kernel | Logical cells | Logical area (um^2) | Max data arrival (ns) | Setup slack (ns) | Hold slack (ns) | Max-cap violations |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| V36RCM | 58,318 | 65,615.550 | 4.9771 | 5.1888 | 0.0556 | 1 |
+| V39C42 | 41,146 | 48,677.202 | 5.3126 | 4.8358 | 0.0223 | 11 |
+| V43SJ17 | 18,754 | 22,823.864 | 5.1048 | 5.0287 | 0.0236 | 1 |
+
+At this fixed physical boundary V36 has the largest setup margin, while V43
+has the smallest logical area and routed wire length. V43 is both smaller and
+faster than V39 in this run. All three meet setup and hold and have zero
+detailed-route DRC and antenna violations, but max-capacitance violations mean
+electrical closure is incomplete. The pinned tool also required skipping its
+crashing post-CTS timing-repair helper; CTS, route and final extracted STA still
+ran. See the [physical audit](docs/PHYSICAL_AUDIT_V44.md) for the exact contract,
+caveats and routing metrics. The historical unbuffered numbers remain in
 [`docs/RESULTS_V44_SYNTHESIS.md`](docs/RESULTS_V44_SYNTHESIS.md).
