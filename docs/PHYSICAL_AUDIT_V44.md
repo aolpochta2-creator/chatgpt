@@ -66,6 +66,48 @@ violations. A positive setup slack at this artificial block boundary is not a
 full-divider Fmax. There is no PVT sweep, characterized upstream predictor,
 full PREP/FINAL timing, power analysis, or foundry signoff in this checkpoint.
 
+## Routed physical results
+
+The first routed checkpoint completed for all three kernels in
+[Actions run 33949336084](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33949336084)
+at flow commit `a0a213268ff571fefc2ae830f88da8713966affc`. Each artifact contains
+the final ODB, DEF, GDS, Verilog netlist, SDC and nonempty OpenRCX SPEF. Each
+implemented kernel retains 168 DFFs.
+
+The pinned OpenROAD build repeatedly crashed inside its post-CTS timing-repair
+helper with `child killed: illegal instruction`. The completed run therefore
+sets `SKIP_CTS_REPAIR_TIMING=1`. Clock-tree synthesis, global-route repair,
+detailed routing, extraction and final STA still ran. These results are a
+controlled routed audit without post-CTS timing repair.
+
+| Kernel | Logical cells | Cells incl. fillers | Logical area (um^2) | Max data arrival (ns) | Setup slack at 10 ns (ns) | Hold slack (ns) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| V36RCM | 58,318 | 134,001 | 65,615.550 | 4.9771 | 5.1888 | 0.0556 |
+| V39C42 | 41,146 | 106,240 | 48,677.202 | 5.3126 | 4.8358 | 0.0223 |
+| V43SJ17 | 18,754 | 66,824 | 22,823.864 | 5.1048 | 5.0287 | 0.0236 |
+
+| Kernel | Routed wire (um) | Vias | Detailed-route DRC | Antenna net/pin violations | Max-cap violations |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| V36RCM | 653,873 | 376,623 | 0 | 0 / 0 | 1 |
+| V39C42 | 658,451 | 314,336 | 0 | 0 / 0 | 11 |
+| V43SJ17 | 287,235 | 136,321 | 0 | 0 / 0 | 1 |
+
+All setup and hold checks pass at the fixed 10 ns period, and max-path TNS is
+zero for every kernel. V36 has the largest setup margin. V43 is the area and
+wiring leader: its logical area is 65.22% below V36 and 53.11% below V39, and
+its routed wire is about 56% below both. V43 is smaller and has more setup
+margin than V39 in this implementation, so the measured physical Pareto pair
+is V36 for timing and V43 for area/wiring. Physical buffering and routing have
+changed the historical unbuffered timing order from V39/V36/V43 to
+V36/V43/V39.
+
+Electrical closure is not complete. The remaining violations are all maximum
+capacitance: V36 worst slack is -1.9009 fF at `_103411_/Z`; V39 has 11
+violations with a worst slack of -7.5119 fF at `_54040_/Z`; V43 worst slack is
+-1.1360 fF at `_20419_/ZN`. The validator consequently reports
+`PHYSICAL_MEASUREMENT_VALID_BUT_TIMING_OR_ELECTRICAL_NOT_CLOSED`. No power or
+independently optimized Fmax comparison is claimed.
+
 ## Sources for the flow
 
 - [Official ORFS Docker instructions](https://openroad-flow-scripts.readthedocs.io/en/latest/user/DockerShell.html).
