@@ -1,5 +1,11 @@
 # V44 synthesis checkpoint
 
+**Audit note (2026-09-05):** this historical table is preserved, but the old
+output-load description was wrong: `set_load 0.005` is 0.005 fF in this Liberty.
+Heavy unbuffered fanout, unrestricted wrap inputs and incomplete column packing
+also limit architectural conclusions. See [the physical audit](PHYSICAL_AUDIT_V44.md)
+before using this table to select a candidate.
+
 This checkpoint is the first common mapped synthesis and static-timing
 comparison of the structurally distinct V36, V39 and V43 product kernels.  It
 does not introduce a new mathematical version.
@@ -53,7 +59,7 @@ V33 predictor CSA boundary through the registered V34 candidate output.  The
 common ROM/predictor and FINAL logic are excluded from area and STA, although
 the complete divider tops are compiled and functionally simulated.
 
-The STA uses an ideal 10 ns clock, zero external data delay, a 0.005 pF output
+The STA used an ideal 10 ns clock, zero external data delay, a 0.005 fF output
 load, and no placement, extracted wire RC, clock-tree uncertainty, or PVT
 sweep.  Reset is an explicit false path.  Therefore the ranking is a genuine
 mapped cell-delay result, but not physical signoff and not an end-to-end

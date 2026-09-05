@@ -16,7 +16,7 @@ yosys -Q -l "build/${top}.yosys.log" -p "
     dfflibmap -liberty $LIBERTY;
     abc -liberty $LIBERTY -D 1000;
     clean -purge;
-    check;
+    check -assert;
     tee -o build/${top}.stat.rpt stat -liberty $LIBERTY;
     write_verilog -noattr -noexpr -nodec build/${top}.mapped.v;
     write_json build/${top}.mapped.json;
@@ -26,6 +26,8 @@ if [[ "${SKIP_OPENSTA:-0}" == "1" ]]; then
     printf '%s\n' "OpenSTA deferred; inspect ABC/Yosys mapping log in this phase." \
         > "build/${top}.sta.rpt"
 else
-    TOP="$top" sta -no_splash -exit scripts/sta.tcl \
+    TOP="$top" sta -no_splash -exit scripts/sta.tcl 2>&1 \
         | tee "build/${top}.sta.rpt"
+    if grep -Eq '^(Error:|Error |\[ERROR)' "build/${top}.sta.rpt"; then exit 1; fi
+    grep -q '^STA_REPORT_COMPLETE$' "build/${top}.sta.rpt"
 fi

@@ -56,7 +56,9 @@ The signed-cut, separate-Booth and joint-prefix identities pass another 200,000
 randomized structural cases. These are pre-RTL mathematical checks, not a
 substitute for compiled RTL simulation.
 
-The first equivalent mapped checkpoint is complete.  V43 is the area leader,
-while V39 has the best cell-only timing; V36 is dominated by V39 at the current
-kernel boundary.  Exact numbers, constraints, reproducibility pins and claim
-limits are in [`docs/RESULTS_V44_SYNTHESIS.md`](docs/RESULTS_V44_SYNTHESIS.md).
+The first mapped checkpoint is complete. V43 has the smallest mapped netlist
+and V39 the shortest path under the original unbuffered assumptions. The
+[physical audit](docs/PHYSICAL_AUDIT_V44.md) documents the load-unit correction,
+high-fanout paths, legal-input restrictions and incomplete column packing that
+limit those conclusions. The historical numbers remain in
+[`docs/RESULTS_V44_SYNTHESIS.md`](docs/RESULTS_V44_SYNTHESIS.md).

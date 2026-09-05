@@ -8,6 +8,7 @@ on:
       - 'scripts/**'
       - 'tb/**'
       - 'Makefile'
+      - 'physical/constraints.sdc'
       - '.github/workflows/eda.yml'
   workflow_dispatch:
 
@@ -122,12 +123,13 @@ jobs:
           LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
         run: |
           for top in kernel_v36rcm kernel_v39c42 kernel_v43sj17; do
-            TOP="$top" tooling/OpenSTA/build/sta -no_splash -exit scripts/sta.tcl \
+            TOP="$top" tooling/OpenSTA/build/sta -no_splash -exit scripts/sta.tcl 2>&1 \
               | tee "build/${top}.opensta.rpt"
-            if grep -q '^Error:' "build/${top}.opensta.rpt"; then
+            if grep -Eq '^(Error:|Error |\[ERROR)' "build/${top}.opensta.rpt"; then
               echo "OpenSTA reported an error for $top" >&2
               exit 1
             fi
+            grep -q '^STA_REPORT_COMPLETE$' "build/${top}.opensta.rpt"
           done
       - name: Upload OpenSTA reports
         if: always()
