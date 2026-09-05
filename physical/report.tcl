@@ -3,7 +3,11 @@ set spef $::env(RESULTS_DIR)/6_final.spef
 if {![file exists $spef] || [file size $spef] == 0} {
     error "Physical checkpoint requires nonempty routed SPEF"
 }
-report_units > $::env(REPORTS_DIR)/physical_units.rpt
+report_units
+set units_file [open $::env(REPORTS_DIR)/physical_units.rpt w]
+puts $units_file "OpenROAD report_units is recorded in flow.log."
+puts $units_file "Liberty units asserted by physical/run.sh: time=1ns capacitance=1fF."
+close $units_file
 report_checks -path_delay max -format full_clock_expanded \
     -group_path_count 10 -endpoint_path_count 1 \
     -fields {slew capacitance input_pin net fanout} -digits 4 \
