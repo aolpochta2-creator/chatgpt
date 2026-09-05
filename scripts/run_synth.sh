@@ -16,6 +16,8 @@ yosys -Q -l "build/${top}.yosys.log" -p "
     dfflibmap -liberty $LIBERTY;
     abc -liberty $LIBERTY -D 1000;
     clean -purge;
+    read_liberty -lib $LIBERTY;
+    hierarchy -check -top $top;
     check -assert;
     tee -o build/${top}.stat.rpt stat -liberty $LIBERTY;
     write_verilog -noattr -noexpr -nodec build/${top}.mapped.v;
