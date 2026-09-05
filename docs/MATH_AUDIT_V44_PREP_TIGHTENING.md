@@ -55,6 +55,11 @@ The implementation change is only:
 - the now-unreachable helper/product case `M=5` is removed;
 - the correction encoding remains three bits because value 4 is reachable.
 
+The structural audit also found unrelated uses of the number six and left
+them intact: the predictor polynomial has six coefficient/weight terms, and
+V43's seven-state prefix uses a six-bit thermometer code (including its
+`3'd5` state). Neither is a PREP candidate count.
+
 The following remain bit-for-bit mathematical assumptions of V44:
 
 - `p`, all predictor tables and direct weights;

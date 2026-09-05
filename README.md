@@ -103,8 +103,21 @@ Thus the old fixed-period V36-timing/V43-area Pareto label does not survive the
 calibrated sweep. This is not end-to-end divider or PVT signoff: V43 has only
 0.2 ps setup margin at 3.15 ns, and V39 was not refined to its own Tmin.
 
+Those values are intentionally retained as PREP6 history. The five-candidate
+RTL was validated and mapped in successful EDA run
+[33963084077](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33963084077),
+then physically rebuilt only at V36 3.25 ns and V43 3.20/3.15 ns in run
+[33963569490](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33963569490).
+V36@3.25 missed setup by 0.0538 ns. V43 met setup/hold at both periods and used
+6.4-6.5% less routed logical area than the old layouts, but retained two and
+one max-cap violations respectively. Therefore none is a strict PREP5 pass and
+no new Tmin/Fmax is claimed. The conditional V43 3.10/3.05 ns runs were not
+started.
+
 See the [physical audit](docs/PHYSICAL_AUDIT_V44.md) for the exact contract and
 caveats, [`docs/PHYSICAL_SWEEP_V44.csv`](docs/PHYSICAL_SWEEP_V44.csv) for all
-29 physical job records, and
+29 historical PREP6 job records,
+[`docs/PHYSICAL_PREP5_V44.csv`](docs/PHYSICAL_PREP5_V44.csv) for the three
+PREP5 measurements, and
 [`docs/RESULTS_V44_SYNTHESIS.md`](docs/RESULTS_V44_SYNTHESIS.md) for the
-historical unbuffered checkpoint.
+historical and paired mapped checkpoints.

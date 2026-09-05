@@ -195,6 +195,75 @@ per-run flow outcomes, but they warn against interpolation and against
 treating the 0.05 ns grid as process/voltage/temperature closure. V44WAVE
 remains a timing-bound study and no V45/V46 was created.
 
+## PREP 6 -> 5 tightening audit
+
+This later checkpoint preserves every table above as the historical
+six-candidate baseline. The independent mathematical audit proved
+
+```
+0 <= floor(2^96 / D) - p <= 4,
+```
+
+with both endpoints attained. Commit
+`ee7cd589dc56ca1d3414bbd39dbe65d540cec589` removes only PREP candidate
+`k=5` and the unreachable `M=5` helper choice. It does not change the
+predictor, signed cut, V43 recoder, `cut=46`, `t=32` or FINAL `0..3`.
+The proof baseline and exact witnesses are in
+[`MATH_AUDIT_V44_PREP_TIGHTENING.md`](MATH_AUDIT_V44_PREP_TIGHTENING.md).
+
+Successful EDA run
+[33963084077](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33963084077)
+maps PREP5 and frozen PREP6 kernels side by side. The PREP5 mapped areas are
+62,285.496 um^2 for V36, 45,719.016 um^2 for V39 and 21,120.400 um^2 for V43,
+reductions of 1.45%, 1.75% and 3.28% respectively. All retain 168 DFFs. The
+complete mapped table is in
+[`RESULTS_V44_SYNTHESIS.md`](RESULTS_V44_SYNTHESIS.md).
+
+Commit `8af456f6feb5f80556d37e778cae7a98ffab7f1d` then imported those new
+mapped artifacts into the unchanged physical contract. Actions run
+[33963569490](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33963569490)
+completed all three jobs successfully as measurements.
+
+| Kernel | Period (ns) | Setup (ns) | Hold (ns) | Setup/hold TNS (ns) | Max-cap | Max-tran/fanout | Cells | Area (um^2) | Wire (um) | Vias | DRC/antenna | Result |
+| --- | ---: | ---: | ---: | --- | ---: | --- | ---: | ---: | ---: | ---: | --- | --- |
+| V36RCM | 3.25 | -0.0538 | +0.0307 | -0.1787 / 0 | 0 | 0 / 0 | 66,556 | 73,608.052 | 642,838 | 393,661 | 0 / 0 | setup fail |
+| V43SJ17 | 3.20 | +0.0472 | +0.0227 | 0 / 0 | 2 | 0 / 0 | 22,444 | 26,131.840 | 294,633 | 143,788 | 0 / 0 | electrical fail |
+| V43SJ17 | 3.15 | +0.0512 | +0.0150 | 0 / 0 | 1 | 0 / 0 | 22,914 | 26,604.256 | 297,279 | 145,818 | 0 / 0 | electrical fail |
+
+Every job invoked post-CTS `repair_timing` once and produced nonempty final
+ODB, DEF, GDS, Verilog, SDC and OpenRCX SPEF. The pinned ORFS variables record
+`LEC_CHECK` default 0; there are no LEC artifacts, while placement/CTS/repair,
+global and detailed route, extraction and final STA all ran. The exact rows
+and artifact byte counts are preserved separately in
+[`PHYSICAL_PREP5_V44.csv`](PHYSICAL_PREP5_V44.csv).
+
+Compared with the old six-candidate implementations at the same periods:
+
+| Point | Setup delta (ns) | Area delta | Wire delta | Via delta | Closure change |
+| --- | ---: | ---: | ---: | ---: | --- |
+| V36 @ 3.25 | -0.0624 | +1,611.694 um^2 (+2.24%) | -56,746 um (-8.11%) | -4,585 (-1.15%) | strict pass -> setup fail |
+| V43 @ 3.20 | +0.0004 | -1,812.258 um^2 (-6.49%) | -13,773 um (-4.47%) | -9,144 (-5.98%) | strict pass -> 2 max-cap |
+| V43 @ 3.15 | +0.0510 | -1,820.770 um^2 (-6.41%) | -10,726 um (-3.48%) | -8,584 (-5.56%) | strict pass -> 1 max-cap |
+
+The V36 area increase despite a smaller mapped netlist is a legitimate
+post-CTS/route optimization outcome, not a transcription error. Likewise, the
+new V43 layouts are materially smaller but have one or two residual
+max-capacitance violations. Physical optimization is discrete and cannot be
+inferred monotonically from mapped cell count.
+
+Consequently this three-point experiment establishes **no new PREP5 physical
+Tmin or Fmax**. The old 3.25 ns/307.69 MHz V36 and 3.15 ns/317.46 MHz V43
+values remain historical PREP6 results and must not be relabeled. Because
+V43@3.15 did not remain a strict pass, the conditional 3.10 ns and 3.05 ns
+runs were not launched. V39 remains the unchanged reference/control and was
+not physically rerun in this narrow experiment.
+
+The physical boundary is still the isolated `kernel_v*` path. It captures the
+removal of the now-illegal `M=5` choice but not the full area of deleting one
+parallel candidate branch inside complete PREP. Full-divider functional
+simulation covers the actual five-branch RTL; no full-divider physical claim
+is made.
+
 ## Sources for the flow
 
 - [Official ORFS Docker instructions](https://openroad-flow-scripts.readthedocs.io/en/latest/user/DockerShell.html).

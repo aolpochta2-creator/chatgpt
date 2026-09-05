@@ -87,3 +87,8 @@ The PREP `6 -> 5` change is a tightening of the same V44 mathematics, not a new
 algorithm version.  See
 [`MATH_AUDIT_V44_PREP_TIGHTENING.md`](MATH_AUDIT_V44_PREP_TIGHTENING.md) for
 the exact theorem, endpoint witnesses and frozen non-changes.
+
+The calibrated 29-point Tmin sweep predates this tightening and is PREP6
+history. The three-point PREP5 rerun found no strict physical pass, so those
+historical frequencies are not transferred to the current RTL; see
+[`PHYSICAL_AUDIT_V44.md`](PHYSICAL_AUDIT_V44.md).

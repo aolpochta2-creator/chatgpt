@@ -88,3 +88,49 @@ per-point results and caveats, and
 [`PHYSICAL_SWEEP_V44.csv`](PHYSICAL_SWEEP_V44.csv) for all 29 job records.
 V44WAVE remains a timing-bound study. No new arithmetic version was introduced
 to obtain the physical comparison.
+
+## PREP 6 -> 5 paired mapped checkpoint
+
+The later proof tightening removes only PREP candidate `k=5` and the now
+unreachable `M=5` helper choice. It is still V44: predictor mathematics,
+signed cut, V36/V39/V43 recoders and FINAL `0..3` are unchanged. The exact
+theorem and endpoint witnesses are recorded in
+[`MATH_AUDIT_V44_PREP_TIGHTENING.md`](MATH_AUDIT_V44_PREP_TIGHTENING.md).
+
+The canonical EDA evidence is successful Actions run
+[33963084077](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33963084077)
+at commit `e53bb9e3e6530110715e88ad6ffd3931f9e4cb4b`. Each job mapped both that
+source and frozen PREP6 commit
+`fd4b23addc2e46a75d83a52f125b63656964c814` with the same Yosys 0.33/ABC
+invocation and pinned Nangate45 Liberty. One OpenSTA build at commit
+`737b52f33b66e4c2ccc3e3ef22c3adfe9aec8d09` then applied identical 10 ns
+constraints to all six netlists.
+
+| Kernel | PREP6 cells | PREP5 cells | Delta | PREP6 area (um^2) | PREP5 area (um^2) | Delta area | Arrival PREP6 -> PREP5 (ns) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| V36RCM | 55,630 | 54,618 | -1,012 (-1.82%) | 63,203.994 | 62,285.496 | -918.498 (-1.45%) | 5.6540 -> 5.6934 (+0.0394) |
+| V39C42 | 38,701 | 37,990 | -711 (-1.84%) | 46,533.774 | 45,719.016 | -814.758 (-1.75%) | 5.4992 -> 5.5032 (+0.0040) |
+| V43SJ17 | 17,599 | 17,106 | -493 (-2.80%) | 21,837.004 | 21,120.400 | -716.604 (-3.28%) | 5.9685 -> 5.8998 (-0.0687) |
+
+All PREP5 and PREP6 kernels contain 168 DFFs and have setup TNS zero at the
+10 ns mapped checkpoint.
+
+| Kernel | PREP5 setup slack (ns) | Critical startpoint | Critical endpoint | Maximum logical fanout | Maximum data fanout excluding clock/reset |
+| --- | ---: | --- | --- | ---: | ---: |
+| V36RCM | +4.2651 | `Pred_Wrap[2]` | mapped DFF `_109067_` | 312 | 312 (`Pred_C`) |
+| V39C42 | +4.4607 | `Pred_C[52]` | mapped DFF `_75808_` | 192 | 192 (`Pred_Wrap`) |
+| V43SJ17 | +4.0651 | `Pred_S[47]` | mapped DFF `_34040_` | 168 (`Reset_N`) | 128 (internal net) |
+
+The mapped result is not monotonic in timing: less logic improves V43's path,
+while ABC's new mapping makes V36 39.4 ps and V39 4.0 ps slower. That is why
+the physical boundary was rerun instead of projecting timing from area.
+
+This comparison boundary still accepts one `Candidate_K` and therefore sees
+the removal of the unreachable `M=5` mux choice, not the full area of deleting
+one parallel candidate branch inside `hz_prep`. Full divider tops were
+compiled and simulated; an attempted paired full-top mapping in run
+[33961763954](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33961763954)
+was intentionally cancelled after the artificial standard-cell ROM expansion
+remained in Yosys for about 25 minutes per candidate. This is an
+infrastructure/cost boundary, not an arithmetic failure and not part of the
+calibrated kernel claim.
