@@ -2,6 +2,13 @@ name: Exact divider EDA
 
 on:
   push:
+    paths:
+      - 'rtl/**'
+      - 'model/**'
+      - 'scripts/**'
+      - 'tb/**'
+      - 'Makefile'
+      - '.github/workflows/eda.yml'
   workflow_dispatch:
 
 concurrency:

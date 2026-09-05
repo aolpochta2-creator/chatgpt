@@ -21,11 +21,11 @@ jobs:
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
+      - uses: actions/checkout@v4
       - name: Resolve one official image for all candidates
         id: image
         run: |
-          docker pull openroad/orfs:latest
-          image=$(docker image inspect openroad/orfs:latest --format '{{index .RepoDigests 0}}')
+          image=$(cat physical/image.txt)
           echo "image=$image" >> "$GITHUB_OUTPUT"
           echo "$image" > image-lock.txt
       - uses: actions/upload-artifact@v4
@@ -70,6 +70,7 @@ jobs:
           docker run --rm --entrypoint bash \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             -e TOP=${{ matrix.top }} \
+            -e ORFS_IMAGE \
             "$ORFS_IMAGE" physical/run.sh
       - name: Upload complete physical evidence
         if: always()
@@ -86,4 +87,3 @@ jobs:
             physical-work/reports/**
             physical-work/results/**/6_final.*
           if-no-files-found: warn
-

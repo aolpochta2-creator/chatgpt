@@ -10,7 +10,8 @@ mkdir -p physical-work
 {
     "$OPENROAD_EXE" -version
     "$YOSYS_EXE" -V
-    git -C /OpenROAD-flow-scripts rev-parse HEAD
+    printf 'ORFS_IMAGE=%s\n' "$ORFS_IMAGE"
+    sha256sum /OpenROAD-flow-scripts/flow/Makefile
     sha256sum "$LIBERTY" "build/${TOP}.mapped.v"
 } > physical-work/toolchain.txt
 python3 - <<'PY'
@@ -40,4 +41,3 @@ make -C /OpenROAD-flow-scripts/flow \
 if grep -Eq '^(Error:|Error |\[ERROR)' physical-work/flow.log; then exit 1; fi
 grep -q 'PHYSICAL_CHECKPOINT_COMPLETE' physical-work/flow.log
 python3 physical/validate_reports.py physical-work "$TOP"
-
