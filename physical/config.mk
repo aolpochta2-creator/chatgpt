@@ -14,6 +14,14 @@ export NUM_CORES = 2
 export TNS_END_PERCENT = 100
 export POST_FINAL_REPORT_TCL = /work/physical/report.tcl
 export PRE_CTS_TCL = /work/physical/trace_exec.tcl
+
+# Diagnostic workaround for the ORFS post-CTS timing-repair helper, which
+# currently exits with "child killed: illegal instruction" on the pinned
+# GitHub Actions runner/toolchain. Keep CTS, routing and final extracted STA
+# enabled; results from this audit must be labeled as having no post-CTS
+# timing repair.
+export SKIP_CTS_REPAIR_TIMING = 1
+
 # Power/IR analysis needs activity and a supply model outside this experiment.
 export PWR_NETS_VOLTAGES =
 export GND_NETS_VOLTAGES =
