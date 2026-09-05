@@ -69,10 +69,12 @@ jobs:
         env:
           LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
         run: |
-          for top in \
-            kernel_v36rcm_prep6_ref kernel_v36rcm \
-            kernel_v43sj17_prep6_ref kernel_v43sj17; do
+          for top in kernel_v36rcm kernel_v43sj17; do
             SKIP_OPENSTA=1 bash scripts/run_synth.sh "$top"
+          done
+          for top in kernel_v36rcm_prep6_ref kernel_v43sj17_prep6_ref; do
+            EXTRA_RTL_FILES=physical/prep6_reference_kernel.sv \
+              SKIP_OPENSTA=1 bash scripts/run_synth.sh "$top"
           done
           {
             yosys -V

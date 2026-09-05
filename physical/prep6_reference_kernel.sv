@@ -1,8 +1,10 @@
 `default_nettype none
 
-// ROM-excluded comparison boundary for the only datapath region that differs
-// between V36, V39 and V43.  Inputs are the signed V33 predictor CSA state.
-module hz_kernel_core #(
+// Physical-only control that exactly restores the historical PREP6 M=5
+// helper.  Production V44 RTL remains PREP5 and does not instantiate this
+// module.  Keeping this source separate also prevents the control switch from
+// perturbing PREP5 elaboration/mapping.
+module hz_kernel_core_prep6_ref #(
     parameter integer VARIANT = 36
 ) (
     input  wire Clk,
@@ -11,8 +13,6 @@ module hz_kernel_core #(
     input  wire [79:0] Pred_C,
     input  wire signed [7:0] Pred_Wrap,
     input  wire Carry_Low,
-    // Candidate_K is three bits because the legal PREP range is 0..4.
-    // Encodings 5..7 are outside the comparison-kernel contract.
     input  wire [2:0] Candidate_K,
     input  wire [63:0] X,
     input  wire [63:0] D,
@@ -28,9 +28,6 @@ module hz_kernel_core #(
         if (VARIANT == 36) begin : g_v36
             hz_product_v36 #(.W(68)) u_pd (.U(U), .V(V), .Wrap(Pred_Wrap), .X(D), .Sum(PD_S), .Carry(PD_C));
             hz_product_v36 #(.W(100)) u_px (.U(U), .V(V), .Wrap(Pred_Wrap), .X(X), .Sum(PX_S), .Carry(PX_C));
-        end else if (VARIANT == 39) begin : g_v39
-            hz_product_v39 #(.W(68)) u_pd (.U(U), .V(V), .Wrap(Pred_Wrap), .X(D), .Sum(PD_S), .Carry(PD_C));
-            hz_product_v39 #(.W(100)) u_px (.U(U), .V(V), .Wrap(Pred_Wrap), .X(X), .Sum(PX_S), .Carry(PX_C));
         end else begin : g_v43
             hz_product_v43 #(.W(68)) u_pd (.U(U), .V(V), .X(D), .Sum(PD_S), .Carry(PD_C));
             hz_product_v43 #(.W(100)) u_px (.U(U), .V(V), .X(X), .Sum(PX_S), .Carry(PX_C));
@@ -51,6 +48,7 @@ module hz_kernel_core #(
              4'sd2: begin MD = D_Base << 1; MX = X_Base << 1; end
              4'sd3: begin MD = D_Base + (D_Base << 1); MX = X_Base + (X_Base << 1); end
              4'sd4: begin MD = D_Base << 2; MX = X_Base << 2; end
+             4'sd5: begin MD = D_Base + (D_Base << 2); MX = X_Base + (X_Base << 2); end
              default: begin MD = 68'd0; MX = 100'd0; end
         endcase
     end
@@ -73,34 +71,24 @@ module hz_kernel_core #(
     end
 endmodule
 
-module kernel_v36rcm (
+module kernel_v36rcm_prep6_ref (
     input wire Clk, input wire Reset_N,
     input wire [79:0] Pred_S, input wire [79:0] Pred_C,
     input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
     input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
     output wire [67:0] Residual_Path, output wire [99:0] NX_Path
 );
-    hz_kernel_core #(.VARIANT(36)) u_core (.*);
+    hz_kernel_core_prep6_ref #(.VARIANT(36)) u_core (.*);
 endmodule
 
-module kernel_v39c42 (
+module kernel_v43sj17_prep6_ref (
     input wire Clk, input wire Reset_N,
     input wire [79:0] Pred_S, input wire [79:0] Pred_C,
     input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
     input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
     output wire [67:0] Residual_Path, output wire [99:0] NX_Path
 );
-    hz_kernel_core #(.VARIANT(39)) u_core (.*);
-endmodule
-
-module kernel_v43sj17 (
-    input wire Clk, input wire Reset_N,
-    input wire [79:0] Pred_S, input wire [79:0] Pred_C,
-    input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
-    input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
-    output wire [67:0] Residual_Path, output wire [99:0] NX_Path
-);
-    hz_kernel_core #(.VARIANT(43)) u_core (.*);
+    hz_kernel_core_prep6_ref #(.VARIANT(43)) u_core (.*);
 endmodule
 
 `default_nettype wire

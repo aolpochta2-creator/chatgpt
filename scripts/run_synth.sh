@@ -8,9 +8,10 @@ mkdir -p build
 python3 scripts/gen_roms.py
 python3 scripts/gen_reducers.py
 rtl_files=$(find rtl -maxdepth 1 -name '*.sv' -print | sort | tr '\n' ' ')
+extra_rtl_files=${EXTRA_RTL_FILES:-}
 
 yosys -Q -l "build/${top}.yosys.log" -p "
-    read_verilog -sv $rtl_files build/hz_reducers_generated.sv;
+    read_verilog -sv $rtl_files $extra_rtl_files build/hz_reducers_generated.sv;
     hierarchy -check -top $top;
     synth -flatten -top $top;
     dfflibmap -liberty $LIBERTY;
