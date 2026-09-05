@@ -1,0 +1,89 @@
+name: V44 physical kernel audit
+
+on:
+  push:
+    paths:
+      - 'physical/**'
+      - '.github/workflows/physical.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: physical-kernel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Resolve one official image for all candidates
+        id: image
+        run: |
+          docker pull openroad/orfs:latest
+          image=$(docker image inspect openroad/orfs:latest --format '{{index .RepoDigests 0}}')
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "$image" > image-lock.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: physical-toolchain-lock
+          path: image-lock.txt
+
+  physical:
+    needs: toolchain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: v36
+            top: kernel_v36rcm
+          - id: v39
+            top: kernel_v39c42
+          - id: v43
+            top: kernel_v43sj17
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch frozen mapped checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.id }}-eda-reports
+          path: build
+          run-id: 33873719618
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fetch pinned Nangate45 platform
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts.git platform-source
+          git -C platform-source sparse-checkout set flow/platforms/nangate45
+          git -C platform-source checkout 0c914a7471340da86058dfe4d25d537f0282a508
+          mkdir -p platforms
+          cp -r platform-source/flow/platforms/nangate45 platforms/
+      - name: Physical implementation and extracted timing
+        env:
+          ORFS_IMAGE: ${{ needs.toolchain.outputs.image }}
+        run: |
+          docker run --rm --entrypoint bash \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -e TOP=${{ matrix.top }} \
+            "$ORFS_IMAGE" physical/run.sh
+      - name: Upload complete physical evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.id }}-physical-reports
+          path: |
+            physical-work/toolchain.txt
+            physical-work/mapped_corrected.rpt
+            physical-work/flow.log
+            physical-work/tie_materialization.log
+            physical-work/physical_summary.json
+            physical-work/logs/**
+            physical-work/reports/**
+            physical-work/results/**/6_final.*
+          if-no-files-found: warn
+
