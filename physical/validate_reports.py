@@ -102,7 +102,10 @@ for line in electrical.splitlines():
     elif '(VIOLATED)' in line:
         assert section, f'Electrical violation outside a known section: {line}'
         electrical_counts[section[0]] += 1
-        slack_match = re.search(r'(-?\d+\.\d+)\s+\(VIOLATED\)', line)
+        # OpenSTA prints fractional capacitance/slew slack, but can emit an
+        # integral max-fanout slack (for example "-2 (VIOLATED)").
+        slack_match = re.search(
+            r'(-?(?:\d+(?:\.\d*)?|\.\d+))\s+\(VIOLATED\)', line)
         assert slack_match, f'Missing electrical slack: {line}'
         value = float(slack_match[1])
         previous = electrical_slacks[section[1]]

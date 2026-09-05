@@ -116,7 +116,11 @@ jobs:
           retention-days: 14
 
   paired:
-    if: github.event_name == 'push' || inputs.experiment == 'paired'
+    # The commit-message gate provides a non-interactive equivalent of the
+    # manual seed-check dispatch.  It is intentionally opt-in so an Actions
+    # client without workflow_dispatch support does not repeat the six-point
+    # primary matrix.
+    if: (github.event_name == 'push' && !contains(github.event.head_commit.message, '[v43-seed-check]')) || inputs.experiment == 'paired'
     name: paired (${{ matrix.variant }}, ${{ matrix.mode }}, ${{ matrix.period }} ns, seed ${{ matrix.seed }})
     needs: [toolchain, mapped]
     runs-on: ubuntu-24.04
@@ -188,7 +192,7 @@ jobs:
           retention-days: 14
 
   v43_seed_check:
-    if: github.event_name == 'workflow_dispatch' && inputs.experiment == 'v43-seed-check'
+    if: (github.event_name == 'workflow_dispatch' && inputs.experiment == 'v43-seed-check') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[v43-seed-check]'))
     name: seed-check (v43, ${{ matrix.mode }}, 3.15 ns, seed ${{ matrix.seed }})
     needs: [toolchain, mapped]
     runs-on: ubuntu-24.04
