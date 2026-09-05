@@ -49,20 +49,29 @@ arrivals = [float(value) for value in
 arrivals = [value for value in arrivals if value >= 0.0]
 assert arrivals, 'Missing max-path data arrival'
 
-electrical_keys = {
-    'max slew': 'max_transition_violations',
-    'max capacitance': 'max_capacitance_violations',
-    'max fanout': 'max_fanout_violations',
+electrical_sections = {
+    'max slew': ('max_transition_violations',
+                 'worst_max_transition_slack_ns'),
+    'max capacitance': ('max_capacitance_violations',
+                        'worst_max_capacitance_slack_ff'),
+    'max fanout': ('max_fanout_violations',
+                   'worst_max_fanout_slack'),
 }
-electrical_counts = {value: 0 for value in electrical_keys.values()}
+electrical_counts = {keys[0]: 0 for keys in electrical_sections.values()}
+electrical_slacks = {keys[1]: None for keys in electrical_sections.values()}
 section = None
 for line in electrical.splitlines():
     heading = line.strip().lower()
-    if heading in electrical_keys:
-        section = electrical_keys[heading]
+    if heading in electrical_sections:
+        section = electrical_sections[heading]
     elif '(VIOLATED)' in line:
         assert section, f'Electrical violation outside a known section: {line}'
-        electrical_counts[section] += 1
+        electrical_counts[section[0]] += 1
+        slack_match = re.search(r'(-?\d+\.\d+)\s+\(VIOLATED\)', line)
+        assert slack_match, f'Missing electrical slack: {line}'
+        value = float(slack_match[1])
+        previous = electrical_slacks[section[1]]
+        electrical_slacks[section[1]] = value if previous is None else min(previous, value)
 
 route = (root/'logs'/'nangate45'/top/'base'/'5_2_route.log').read_text()
 wire = re.findall(r'Total wire length =\s*(\d+)\s*um\.', route)
@@ -87,6 +96,7 @@ summary = {'top': top,
            **counts, **values,
            'max_data_arrival_ns': max(arrivals),
            **electrical_counts,
+           **electrical_slacks,
            'electrical_violations': sum(electrical_counts.values()),
            'cts_repair_timing_calls': cts_repair_calls,
            'cts_hold_buffers': cts_hold_buffers,

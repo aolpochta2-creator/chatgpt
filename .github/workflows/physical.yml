@@ -44,11 +44,9 @@ jobs:
         variant:
           - id: v36
             top: kernel_v36rcm
-          - id: v39
-            top: kernel_v39c42
           - id: v43
             top: kernel_v43sj17
-        period: ['6.0', '5.5', '5.0', '4.5']
+        period: ['4.0', '3.5', '3.0']
     steps:
       - uses: actions/checkout@v4
       - name: Fetch frozen mapped checkpoint
@@ -92,4 +90,12 @@ jobs:
             physical-work/results/**/6_final.*
             physical-work/results/**/4*lec*
           if-no-files-found: warn
+          retention-days: 14
+      - name: Upload compact physical summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.variant.id }}-p${{ matrix.period }}-summary
+          path: physical-work/physical_summary.json
+          if-no-files-found: ignore
           retention-days: 14
