@@ -64,7 +64,8 @@
 
 - public repository, ветка main;
 - фактическая запись в GitHub подтверждена несколькими успешными commit;
-- текущий main: 803aad755dd666854c70fefbb535ebffc979c8ca;
+- последний кодовый baseline до handoff: 803aad755dd666854c70fefbb535ebffc979c8ca;
+- текущий main после добавления этого журнала: bda1d25be43fc70a324eba7a24df17f0eabf799f;
 - последние commits добавили README, RTL/CI, common OpenSTA, physical audit, pinned toolchain и диагностические логи.
 
 Основные файлы:
@@ -155,7 +156,8 @@ Physical flow импортирует frozen mapped netlist, материализ
     Не создавать новые математические версии до physical synthesis/STA.
     Сравнивать V36RCM+V34DX+V35FF, V39C42 и V43SJ17 одинаковым flow; V44WAVE — только timing-bound study.
 
-    Текущий main: 803aad755dd666854c70fefbb535ebffc979c8ca.
+    Кодовый baseline: 803aad755dd666854c70fefbb535ebffc979c8ca.
+    Текущий main после handoff-коммита: bda1d25be43fc70a324eba7a24df17f0eabf799f.
     Обычный EDA run 33945386027 зелёный. Physical runs 33944711386, 33944899194, 33944984663 и 33945291301 остановились до route/SPEF; последний blocker — CTS child killed: illegal instruction после hold-repair.
 
     Следующее действие: добавить SKIP_CTS_REPAIR_TIMING=1 в physical/config.mk, явно записать caveat, rerun physical.yml для V36/V39/V43 и получить final routed OpenRCX/SPEF STA. Никаких новых RTL/math изменений до этого.
