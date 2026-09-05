@@ -1,15 +1,27 @@
-name: V44 physical kernel audit
+name: V44 paired PREP physical reproducibility
 
 on:
   push:
     paths:
       - 'physical/**'
+      - 'rtl/**'
+      - 'scripts/run_synth.sh'
+      - 'scripts/run_kernel_reference.sh'
+      - 'tb/tb_kernel_prep_reference.sv'
       - '.github/workflows/physical.yml'
   workflow_dispatch:
+    inputs:
+      experiment:
+        description: Physical experiment to run
+        required: true
+        default: paired
+        type: choice
+        options:
+          - paired
+          - v43-seed-check
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: physical-kernel-${{ github.ref }}
@@ -22,7 +34,7 @@ jobs:
       image: ${{ steps.image.outputs.image }}
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve one official image for all candidates
+      - name: Resolve one official image for every paired job
         id: image
         run: |
           image=$(cat physical/image.txt)
@@ -33,30 +45,79 @@ jobs:
           name: physical-toolchain-lock
           path: image-lock.txt
 
-  physical:
-    name: physical (${{ matrix.variant.id }}, ${{ matrix.variant.top }}, ${{ matrix.period }} ns)
+  mapped:
     needs: toolchain
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the frozen mapped-source tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog yosys
+          yosys -V | tee yosys-version.txt
+          grep -Eq '^Yosys 0\.33' yosys-version.txt
+      - name: Fetch the pinned Nangate45 Liberty
+        run: |
+          mkdir -p build/lib
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD-flow-scripts/0c914a7471340da86058dfe4d25d537f0282a508/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib \
+            --output build/lib/NangateOpenCellLibrary_typical.lib
+      - name: Validate the same-tree PREP6 reference
+        run: bash scripts/run_kernel_reference.sh
+      - name: Map PREP6 and PREP5 from this commit
+        env:
+          LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
+        run: |
+          for top in \
+            kernel_v36rcm_prep6_ref kernel_v36rcm \
+            kernel_v43sj17_prep6_ref kernel_v43sj17; do
+            SKIP_OPENSTA=1 bash scripts/run_synth.sh "$top"
+          done
+          {
+            yosys -V
+            printf 'SOURCE_COMMIT=%s\n' "$GITHUB_SHA"
+            printf '%s\n' 'MAPPING_FLOW=scripts/run_synth.sh; ABC delay target=1000; Nangate45 typical'
+            sha256sum build/lib/NangateOpenCellLibrary_typical.lib
+            sha256sum build/*.mapped.v
+          } > build/paired_mapping_toolchain.txt
+      - name: Upload same-run mapped kernels
+        uses: actions/upload-artifact@v4
+        with:
+          name: paired-mapped-kernels
+          path: |
+            build/*.mapped.v
+            build/*.mapped.json
+            build/*.stat.rpt
+            build/*.yosys.log
+            build/*.sta.rpt
+            build/kernel_prep_reference.rpt
+            build/paired_mapping_toolchain.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  paired:
+    if: github.event_name == 'push' || inputs.experiment == 'paired'
+    name: paired (${{ matrix.variant }}, ${{ matrix.mode }}, ${{ matrix.period }} ns, seed ${{ matrix.seed }})
+    needs: [toolchain, mapped]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - variant: { id: v36, top: kernel_v36rcm }
-            period: '3.25'
-          - variant: { id: v43, top: kernel_v43sj17 }
-            period: '3.20'
-          - variant: { id: v43, top: kernel_v43sj17 }
-            period: '3.15'
+          - { variant: v36, mode: prep6, top: kernel_v36rcm_prep6_ref, period: '3.25', seed: 1 }
+          - { variant: v36, mode: prep5, top: kernel_v36rcm, period: '3.25', seed: 1 }
+          - { variant: v43, mode: prep6, top: kernel_v43sj17_prep6_ref, period: '3.20', seed: 1 }
+          - { variant: v43, mode: prep5, top: kernel_v43sj17, period: '3.20', seed: 1 }
+          - { variant: v43, mode: prep6, top: kernel_v43sj17_prep6_ref, period: '3.15', seed: 1 }
+          - { variant: v43, mode: prep5, top: kernel_v43sj17, period: '3.15', seed: 1 }
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch frozen mapped checkpoint
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.variant.id }}-eda-reports
+          name: paired-mapped-kernels
           path: build
-          run-id: 33963084077
-          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Fetch pinned Nangate45 platform
         run: |
           git clone --filter=blob:none --no-checkout https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts.git platform-source
@@ -64,22 +125,26 @@ jobs:
           git -C platform-source checkout 0c914a7471340da86058dfe4d25d537f0282a508
           mkdir -p platforms
           cp -r platform-source/flow/platforms/nangate45 platforms/
-      - name: Physical implementation and extracted timing
+      - name: Full paired physical implementation and extracted timing
         env:
           ORFS_IMAGE: ${{ needs.toolchain.outputs.image }}
         run: |
           docker run --rm --entrypoint bash \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
-            -e TOP=${{ matrix.variant.top }} \
-            -e CLOCK_PERIOD=${{ matrix.period }} \
-            -e FROZEN_MAPPED_RUN=33963084077 \
+            -e "TOP=${{ matrix.top }}" \
+            -e "CLOCK_PERIOD=${{ matrix.period }}" \
+            -e "PREP_MODE=${{ matrix.mode }}" \
+            -e "PHYSICAL_SEED=${{ matrix.seed }}" \
+            -e "EXPERIMENT_LABEL=paired-primary" \
+            -e "SOURCE_COMMIT=${{ github.sha }}" \
+            -e "SOURCE_RUN_ID=${{ github.run_id }}" \
             -e ORFS_IMAGE \
             "$ORFS_IMAGE" physical/run.sh
-      - name: Upload complete physical evidence
+      - name: Upload complete paired evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.variant.id }}-p${{ matrix.period }}-physical-reports
+          name: paired-${{ matrix.variant }}-${{ matrix.mode }}-p${{ matrix.period }}-seed${{ matrix.seed }}-physical-reports
           path: |
             physical-work/toolchain.txt
             physical-work/mapped_corrected.rpt
@@ -93,11 +158,80 @@ jobs:
             physical-work/results/**/4*lec*
           if-no-files-found: warn
           retention-days: 14
-      - name: Upload compact physical summary
+      - name: Upload compact paired summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.variant.id }}-p${{ matrix.period }}-summary
+          name: paired-${{ matrix.variant }}-${{ matrix.mode }}-p${{ matrix.period }}-seed${{ matrix.seed }}-summary
+          path: physical-work/physical_summary.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  v43_seed_check:
+    if: github.event_name == 'workflow_dispatch' && inputs.experiment == 'v43-seed-check'
+    name: seed-check (v43, ${{ matrix.mode }}, 3.15 ns, seed ${{ matrix.seed }})
+    needs: [toolchain, mapped]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { mode: prep6, top: kernel_v43sj17_prep6_ref, seed: 1 }
+          - { mode: prep5, top: kernel_v43sj17, seed: 1 }
+          - { mode: prep6, top: kernel_v43sj17_prep6_ref, seed: 2 }
+          - { mode: prep5, top: kernel_v43sj17, seed: 2 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: paired-mapped-kernels
+          path: build
+      - name: Fetch pinned Nangate45 platform
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts.git platform-source
+          git -C platform-source sparse-checkout set flow/platforms/nangate45
+          git -C platform-source checkout 0c914a7471340da86058dfe4d25d537f0282a508
+          mkdir -p platforms
+          cp -r platform-source/flow/platforms/nangate45 platforms/
+      - name: Full seed-controlled physical implementation and extracted timing
+        env:
+          ORFS_IMAGE: ${{ needs.toolchain.outputs.image }}
+        run: |
+          docker run --rm --entrypoint bash \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -e "TOP=${{ matrix.top }}" \
+            -e "CLOCK_PERIOD=3.15" \
+            -e "PREP_MODE=${{ matrix.mode }}" \
+            -e "PHYSICAL_SEED=${{ matrix.seed }}" \
+            -e "EXPERIMENT_LABEL=v43-seed-check" \
+            -e "SOURCE_COMMIT=${{ github.sha }}" \
+            -e "SOURCE_RUN_ID=${{ github.run_id }}" \
+            -e ORFS_IMAGE \
+            "$ORFS_IMAGE" physical/run.sh
+      - name: Upload complete seed-check evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seedcheck-v43-${{ matrix.mode }}-p3.15-seed${{ matrix.seed }}-physical-reports
+          path: |
+            physical-work/toolchain.txt
+            physical-work/mapped_corrected.rpt
+            physical-work/flow.log
+            physical-work/tie_materialization.log
+            physical-work/physical_summary.json
+            physical-work/tooling/**
+            physical-work/logs/**
+            physical-work/reports/**
+            physical-work/results/**/6_final.*
+            physical-work/results/**/4*lec*
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload compact seed-check summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seedcheck-v43-${{ matrix.mode }}-p3.15-seed${{ matrix.seed }}-summary
           path: physical-work/physical_summary.json
           if-no-files-found: ignore
           retention-days: 14

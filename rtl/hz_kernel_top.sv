@@ -3,7 +3,11 @@
 // ROM-excluded comparison boundary for the only datapath region that differs
 // between V36, V39 and V43.  Inputs are the signed V33 predictor CSA state.
 module hz_kernel_core #(
-    parameter integer VARIANT = 36
+    parameter integer VARIANT = 36,
+    // Experimental control only.  Production V44 PREP is fixed at five
+    // candidates; value 6 restores the historical M=5 kernel choice so both
+    // controls can be built from one source tree for paired physical runs.
+    parameter integer PREP_CANDIDATES = 5
 ) (
     input  wire Clk,
     input  wire Reset_N,
@@ -11,8 +15,8 @@ module hz_kernel_core #(
     input  wire [79:0] Pred_C,
     input  wire signed [7:0] Pred_Wrap,
     input  wire Carry_Low,
-    // Candidate_K is three bits because the legal PREP range is 0..4.
-    // Encodings 5..7 are outside the comparison-kernel contract.
+    // Production PREP5 uses 0..4.  Experimental PREP6 reference mode also
+    // admits 5; encodings 6..7 stay outside the comparison-kernel contract.
     input  wire [2:0] Candidate_K,
     input  wire [63:0] X,
     input  wire [63:0] D,
@@ -51,6 +55,15 @@ module hz_kernel_core #(
              4'sd2: begin MD = D_Base << 1; MX = X_Base << 1; end
              4'sd3: begin MD = D_Base + (D_Base << 1); MX = X_Base + (X_Base << 1); end
              4'sd4: begin MD = D_Base << 2; MX = X_Base << 2; end
+             4'sd5: begin
+                 if (PREP_CANDIDATES == 6) begin
+                     MD = D_Base + (D_Base << 2);
+                     MX = X_Base + (X_Base << 2);
+                 end else begin
+                     MD = 68'd0;
+                     MX = 100'd0;
+                 end
+             end
              default: begin MD = 68'd0; MX = 100'd0; end
         endcase
     end
@@ -101,6 +114,28 @@ module kernel_v43sj17 (
     output wire [67:0] Residual_Path, output wire [99:0] NX_Path
 );
     hz_kernel_core #(.VARIANT(43)) u_core (.*);
+endmodule
+
+// Same-tree controls for physical reproducibility only.  These are not new
+// algorithm versions and are never instantiated by the production divider.
+module kernel_v36rcm_prep6_ref (
+    input wire Clk, input wire Reset_N,
+    input wire [79:0] Pred_S, input wire [79:0] Pred_C,
+    input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
+    input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
+    output wire [67:0] Residual_Path, output wire [99:0] NX_Path
+);
+    hz_kernel_core #(.VARIANT(36), .PREP_CANDIDATES(6)) u_core (.*);
+endmodule
+
+module kernel_v43sj17_prep6_ref (
+    input wire Clk, input wire Reset_N,
+    input wire [79:0] Pred_S, input wire [79:0] Pred_C,
+    input wire signed [7:0] Pred_Wrap, input wire Carry_Low,
+    input wire [2:0] Candidate_K, input wire [63:0] X, input wire [63:0] D,
+    output wire [67:0] Residual_Path, output wire [99:0] NX_Path
+);
+    hz_kernel_core #(.VARIANT(43), .PREP_CANDIDATES(6)) u_core (.*);
 endmodule
 
 `default_nettype wire
