@@ -65,11 +65,10 @@ make synth-full-v43
 
 The GitHub Actions matrix installs Icarus Verilog and Yosys, builds a pinned
 official OpenSTA, maps every comparison kernel to the same pinned Nangate45
-Liberty file, and uploads the raw reports.  Full divider tops are compiled and
-simulated back-to-back.  For this tightening, CI also maps the complete current
-and frozen six-candidate tops in paired jobs; those full-top numbers include an
-artificial standard-cell realization of the ROMs and are reported separately
-from the product-kernel comparison.
+Liberty file, and uploads paired current/frozen-six-candidate reports.  Full
+divider tops are compiled and simulated back-to-back.  Full-top mapping remains
+an optional local control because its artificial standard-cell ROM realization
+is prohibitively expensive and is not the calibrated comparison boundary.
 
 ## Evidence level
 

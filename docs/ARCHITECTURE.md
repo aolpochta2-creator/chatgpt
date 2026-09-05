@@ -69,10 +69,10 @@ realization.
 
 `Candidate_K` remains three bits at this boundary because PREP correction 4 is
 reachable; its legal range is now `0..4`.  The tightened kernel removes the
-unreachable `M=5` product choice.  Paired CI also maps each complete divider at
-the frozen six-candidate baseline and at the current five-candidate source so
-the common PREP area delta is measured rather than inferred from the isolated
-kernel alone.
+unreachable `M=5` product choice.  Paired CI maps the frozen six-candidate and
+current five-candidate kernels in the same jobs.  This measures the calibrated
+kernel-boundary effect; it does not pretend that the isolated result is the
+area of the complete parallel PREP candidate bank.
 
 ## Current implementation boundary
 
