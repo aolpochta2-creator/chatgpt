@@ -43,9 +43,9 @@ jobs:
       matrix:
         include:
           - variant: { id: v36, top: kernel_v36rcm }
-            period: '3.45'
-          - variant: { id: v36, top: kernel_v36rcm }
             period: '3.25'
+          - variant: { id: v43, top: kernel_v43sj17 }
+            period: '3.20'
           - variant: { id: v43, top: kernel_v43sj17 }
             period: '3.15'
     steps:
@@ -55,7 +55,7 @@ jobs:
         with:
           name: ${{ matrix.variant.id }}-eda-reports
           path: build
-          run-id: 33873719618
+          run-id: 33963084077
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Fetch pinned Nangate45 platform
         run: |
@@ -72,6 +72,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             -e TOP=${{ matrix.variant.top }} \
             -e CLOCK_PERIOD=${{ matrix.period }} \
+            -e FROZEN_MAPPED_RUN=33963084077 \
             -e ORFS_IMAGE \
             "$ORFS_IMAGE" physical/run.sh
       - name: Upload complete physical evidence

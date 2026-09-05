@@ -2,6 +2,7 @@
 set -euo pipefail
 : "${TOP:?TOP is required}"
 : "${CLOCK_PERIOD:=10.0}"
+: "${FROZEN_MAPPED_RUN:?FROZEN_MAPPED_RUN is required}"
 export CLOCK_PERIOD
 cd /work
 source /OpenROAD-flow-scripts/env.sh
@@ -17,7 +18,7 @@ cp /OpenROAD-flow-scripts/flow/scripts/variables.yaml physical-work/tooling/
     "$YOSYS_EXE" -V
     printf 'ORFS_IMAGE=%s\n' "$ORFS_IMAGE"
     printf 'CLOCK_PERIOD_NS=%s\n' "$CLOCK_PERIOD"
-    printf 'FROZEN_MAPPED_RUN=%s\n' '33873719618'
+    printf 'FROZEN_MAPPED_RUN=%s\n' "$FROZEN_MAPPED_RUN"
     sha256sum /OpenROAD-flow-scripts/flow/Makefile
     sha256sum "$LIBERTY" "build/${TOP}.mapped.v"
 } > physical-work/toolchain.txt
