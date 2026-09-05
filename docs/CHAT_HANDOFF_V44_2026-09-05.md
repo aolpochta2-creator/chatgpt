@@ -64,7 +64,8 @@
 
 - public repository, ветка main;
 - фактическая запись в GitHub подтверждена несколькими успешными commit;
-- последний кодовый baseline до handoff: 803aad755dd666854c70fefbb535ebffc979c8ca;
+- последний physical-sweep code head до reporting:
+  `2efb847b065f96e244db3b2c5a1032564a1a57e8`;
 - handoff-файл и его уточнения уже закоммичены в main; ссылку на актуальный main см. в заголовке/репозитории;
 - последние commits добавили README, RTL/CI, common OpenSTA, physical audit, pinned toolchain и диагностические логи.
 
@@ -78,6 +79,7 @@
 - .github/workflows/eda.yml — единый compile/simulation/Yosys/ABC/OpenSTA flow;
 - .github/workflows/physical.yml — controlled physical kernel audit;
 - physical/config.mk, constraints.sdc, baseline.tcl, run.sh, report.tcl, validate_reports.py, image.txt.
+- docs/PHYSICAL_SWEEP_V44.csv — полный 29-row physical dataset.
 
 Архитектурная спецификация: docs/ARCHITECTURE.md.
 
@@ -112,74 +114,111 @@ Frozen mapped checkpoint: GitHub Actions run 33873719618, source commit c5ad5428
 
 Сырые STA reports показывают тяжёлый unbuffered fanout: самый длинный single-cell arc — 1.8044 ns при fanout 247 для V36, 1.6208 ns при fanout 127 для V39 и 1.7178 ns при fanout 127 для V43. Это причина сначала проверить физическую буферизацию/маршрутизацию.
 
-Physical flow импортирует frozen mapped netlist, материализует только constants в tie cells, затем запускает pinned official ORFS finish: floorplan, placement, CTS, route, detailed route, OpenRCX SPEF и final STA. Платформа Nangate45 зафиксирована ORFS commit 0c914a7471340da86058dfe4d25d537f0282a508; Docker image зафиксирован digest sha256:751a77afcade9882b51427e6d9d079b8e270e7a8f4aa66df2d0659457d1c29fd.
+Physical flow импортирует frozen mapped netlist, материализует только constants в tie cells, затем запускает pinned official ORFS finish: floorplan, placement, CTS, post-CTS `repair_timing`, global route, detailed route, OpenRCX SPEF и final STA. Платформа Nangate45 зафиксирована ORFS commit 0c914a7471340da86058dfe4d25d537f0282a508; Docker image зафиксирован digest sha256:751a77afcade9882b51427e6d9d079b8e270e7a8f4aa66df2d0659457d1c29fd. `LEC_CHECK=0` отключает только Kepler LEC из-за AVX-512 crash и не отключает timing repair.
 
-## 8. Routed physical checkpoint завершён
+## 8. Исправленный physical baseline @ 10 ns
 
-Диагностический workaround `SKIP_CTS_REPAIR_TIMING=1` добавлен commit
-`52b78eb583e24387c63ce914f02b7c88e0f6d918`. Он отключает только падающий
-post-CTS timing-repair helper. CTS, global-route repair, detailed route,
-OpenRCX extraction и final STA остаются включёнными. Отдельный commit
-`a0a213268ff571fefc2ae830f88da8713966affc` исправил несовместимый с pinned
-OpenROAD вызов `report_units`.
+Подтверждённый baseline — commit
+`fcf1e843a0dc6032a6208034e8b4d84d70250e14`,
+[Actions run 33951165094](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33951165094).
+Все jobs завершились success; post-CTS `repair_timing` реально вызван по одному
+разу для V36/V39/V43. Для каждого kernel присутствуют final ODB, DEF, GDS,
+Verilog netlist, SDC и nonempty SPEF.
 
-[Physical run 33949336084](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33949336084)
-завершился успешно для V36, V39 и V43. Для каждого варианта сохранены final
-ODB, DEF, GDS, Verilog netlist, SDC, nonempty OpenRCX SPEF, setup/hold и
-electrical reports. Все варианты сохранили 168 DFF.
+| Kernel | Logical cells | Logical area, um² | Max data arrival, ns | Setup, ns | Hold, ns | Max-cap | Wire, um | Vias |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| V36RCM | 58,318 | 65,615.550 | 4.9745 | +5.1915 | +0.0573 | 0 | 653,970 | 376,765 |
+| V39C42 | 41,145 | 48,675.340 | 5.3119 | +4.8362 | +0.0240 | 12 | 658,374 | 314,069 |
+| V43SJ17 | 18,754 | 22,823.864 | 5.0972 | +5.0363 | +0.0216 | 0 | 287,112 | 136,397 |
 
-| Kernel | Logical cells | Logical area, um² | Max data arrival, ns | Setup slack @ 10 ns, ns | Hold slack, ns | Max-cap violations |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| V36RCM | 58,318 | 65,615.550 | 4.9771 | 5.1888 | 0.0556 | 1 |
-| V39C42 | 41,146 | 48,677.202 | 5.3126 | 4.8358 | 0.0223 | 11 |
-| V43SJ17 | 18,754 | 22,823.864 | 5.1048 | 5.0287 | 0.0236 | 1 |
+Setup TNS, max-transition, max-fanout, detailed-route DRC и antenna равны нулю
+для всех. V36/V43 имеют полную reported electrical closure; V39 остаётся
+reference с 12 max-cap violations.
 
-| Kernel | Routed wire, um | Vias | Detailed-route DRC | Antenna net/pin violations |
-| --- | ---: | ---: | ---: | ---: |
-| V36RCM | 653,873 | 376,623 | 0 | 0 / 0 |
-| V39C42 | 658,451 | 314,336 | 0 | 0 / 0 |
-| V43SJ17 | 287,235 | 136,321 | 0 | 0 / 0 |
+## 9. Calibrated physical period sweep завершён
 
-Все три проходят setup и hold при фиксированном периоде 10 ns; max-path TNS
-равен нулю. V36 имеет лучший setup margin. V43 лидирует по logical area и
-routed wire и в этом implementation одновременно меньше и быстрее V39.
-Measured physical Pareto pair: V36 по timing и V43 по area/wiring.
+Каждый period прошёл отдельный полный placement-to-SPEF/STA flow. Старую
+разводку ни для одной новой SDC не использовали. RTL, математика, frozen mapped
+kernels, platform, die/core, density, transition/load/fanout/reset constraints
+не менялись.
 
-Это валидное физическое измерение, но не electrical signoff: оставшиеся
-нарушения — max capacitance, 1/11/1 для V36/V39/V43. Validator корректно
-выдаёт `PHYSICAL_MEASUREMENT_VALID_BUT_TIMING_OR_ELECTRICAL_NOT_CLOSED`.
-Кроме того, post-CTS timing repair был пропущен, PVT sweep и power analysis не
-проводились, а boundary остаётся isolated kernel, не end-to-end divider.
+| Этап | Commit | Actions run | Точки |
+| --- | --- | ---: | --- |
+| coarse | `a8e3e327b5172952ddddb4c48a1eed7ba2fd669a` | [33953087457](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33953087457) | V36/V39/V43: 6.0, 5.5, 5.0, 4.5 ns |
+| lower coarse | `a5a9e1cf39e0e1bbc2c8ed28ceccce9460e55dbf` | [33954252869](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33954252869) | V36/V43: 4.0, 3.5, 3.0 ns |
+| refinement 0.1 | `9962ce98a0071f45883fb9221bb5082b972f6359` | [33955844721](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33955844721) | V36/V43: 3.1–3.4 ns |
+| refinement 0.05 | `2efb847b065f96e244db3b2c5a1032564a1a57e8` | [33957430113](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33957430113) | V36: 3.25/3.45; V43: 3.15 ns |
 
-## 9. Следующая инженерная точка
+Все четыре runs и все 29 physical jobs имеют Actions conclusion success как
+валидные measurements. Во всех jobs: 168 DFF, post-CTS `repair_timing` вызван,
+hold проходит, max-transition/max-fanout/DRC/antenna = 0, все final artifacts
+присутствуют. Timing/electrical fail отмечается внутри summary и не смешивается
+с infrastructure failure. Полная таблица с job IDs, arrival, TNS, area,
+buffers, wire/vias и размерами artifacts сохранена в
+`docs/PHYSICAL_SWEEP_V44.csv`.
 
-1. Считать run 33949336084 первым общим routed/SPEF-aware checkpoint и не
-   смешивать его с исторической unbuffered mapped-таблицей.
-2. Перед новым архитектурным выводом закрыть одинаковым способом max-cap
-   violations или повторить flow с рабочим post-CTS repair build.
-3. После electrical cleanup провести калиброванный sweep period, если нужен
-   сравнительный physical Tmin. Значения `10 ns - slack` сами по себе не
-   являются re-optimized Fmax.
-4. Если работа возвращается к RTL fidelity, отдельно реализовать и измерить
-   explicit column-packed/4:2 V39 и compact correction-dot/Dadda V43. Текущий
-   V39 использует generic 3:2 row tree, текущий V43 — generic row reducer.
-5. V44WAVE сохранять как timing-bound study. Не вводить новую математическую
-   версию без измеримого инженерного вопроса и одинакового validation flow.
+| Kernel | Реальный bracket | Physical Tmin | Fmax | Setup @ Tmin | Hold | Max-cap | Area, um² | Wire, um | Vias |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| V36RCM | 3.20 fail / 3.25 pass | 3.25 ns | 307.69 MHz | +0.0086 ns | +0.0500 ns | 0 | 71,996.358 | 699,584 | 398,246 |
+| V43SJ17 | 3.10 fail / 3.15 pass | 3.15 ns | 317.46 MHz | +0.0002 ns | +0.0298 ns | 0 | 28,425.026 | 308,005 | 154,402 |
 
-## 10. Готовый блок для вставки в новый чат
+Fmax рассчитан только как `1000 / реально пройденный Tmin(ns)`. Значения
+`10 ns - slack` для этого не использовались.
+
+V43 имеет на 3.08% меньший Tmin и на 3.17% больший measured Fmax. В точках
+собственного Tmin V43 меньше V36 на 60.52% по logical area, на 55.97% по
+routed wire и на 61.23% по vias. На общем strict-pass period 3.5 ns V43 также
+имеет лучший setup slack: +0.0716 против +0.0387 ns.
+
+Следовательно, прежняя physical Pareto-пара "V36=timing, V43=area/wiring" не
+сохраняется среди двух полностью swept kernels: в этом isolated Nangate45
+single-corner flow V43 лидирует и по частоте, и по физическому размеру. Это не
+объявление нового математического или end-to-end divider winner.
+
+V39 остаётся reference/control. На coarse grid 6.0–4.5 ns setup/hold проходит,
+но max-cap counts равны 13/3/13/6; ни одной strict electrical pass точки нет.
+Его собственный Tmin не уточнялся, поэтому V39 Fmax и строгая timing-доминация
+не заявляются. По area/wiring и electrical closure он остаётся существенно
+хуже V43 на измеренных точках.
+
+## 10. Caveats и следующая инженерная точка
+
+- Это isolated product-kernel boundary, не полный divider и не AXI wrapper.
+- Только Nangate45 typical corner; нет PVT/OCV, power/IR/EM и foundry signoff.
+- V43@3.15 имеет всего +0.0002 ns setup margin, поэтому 317.46 MHz —
+  grid-defined measurement, а не robust operating target. 3.20 ns даёт более
+  практичный measured margin +0.0468 ns.
+- V36 электрически немонотонна: 3.45/3.40/3.30 ns имеют по одному small max-cap
+  residual, но независимо перестроенная 3.25 ns точка чистая. Не интерполировать
+  electrical closure между периодами.
+- Текущий V39 остаётся generic 3:2 row tree, текущий V43 — generic row reducer;
+  proof-level packed/Dadda структуры журналом доказаны не полностью в RTL.
+- V44WAVE остаётся timing-bound study. V45/V46 не создавались.
+
+Следующий разумный этап — не новая математика, а robustness: выбрать 3.20 ns
+как рабочую V43 point либо повторить boundary на дополнительных corners/seeds,
+затем при необходимости расширить timing boundary до полного divider. Только
+после этого решать, нужна ли proof-faithful compact V43 reducer RTL.
+
+## 11. Готовый блок для вставки в новый чат
 
     Мы продолжаем R&D exact integer divider. Канонический контекст: docs/CHAT_HANDOFF_V44_2026-09-05.md в https://github.com/aolpochta2-creator/chatgpt.
 
-    Сравниваем V36RCM+V34DX+V35FF, V39C42 и V43SJ17 одинаковым flow; V44WAVE остаётся timing-bound study.
+    Сравниваем V36RCM+V34DX+V35FF, V39C42 и V43SJ17; V44WAVE остаётся timing-bound study. RTL/математика не менялись, V45/V46 не создавались. Frozen mapped kernels взяты из Actions run 33873719618.
 
-    Общий routed/OpenRCX checkpoint завершён: GitHub Actions run 33949336084, flow commit a0a213268ff571fefc2ae830f88da8713966affc. CTS, detailed route и final SPEF-aware STA прошли для всех трёх; post-CTS timing-repair helper отключён через SKIP_CTS_REPAIR_TIMING=1 из-за воспроизводимого illegal-instruction crash.
+    Исправленный 10 ns baseline: commit fcf1e843a0dc6032a6208034e8b4d84d70250e14, run 33951165094. Post-CTS repair_timing включён и реально выполняется. LEC_CHECK=0 отключает только Kepler LEC из-за AVX-512 crash. V36/V43 имеют max-cap=0; V39 остаётся reference с 12 max-cap.
 
-    Physical результаты @10 ns: V36 58,318 logical cells / 65,615.550 um² / setup slack 5.1888 ns / hold 0.0556 ns; V39 41,146 / 48,677.202 / 4.8358 / 0.0223; V43 18,754 / 22,823.864 / 5.0287 / 0.0236. V36 — timing leader; V43 — area/wiring leader и быстрее V39 в этом run.
+    Calibrated full physical sweep завершён. Runs: coarse 33953087457, lower coarse 33954252869, refinement 0.1 ns 33955844721, refinement 0.05 ns 33957430113. Каждый period заново прошёл placement, CTS, post-CTS repair, global/detailed route, OpenRCX SPEF и final STA. Все 29 jobs завершились success как measurements; infrastructure failures не было; все final ODB/DEF/GDS/netlist/SDC/SPEF присутствуют.
 
-    Setup/hold, detailed-route DRC и antenna checks проходят. Electrical closure не завершён: max-cap violations V36/V39/V43 = 1/11/1. Не называть checkpoint signoff или end-to-end divider Fmax.
+    Итог: V36 strict physical Tmin=3.25 ns, Fmax≈307.69 MHz, bracket 3.20 fail/3.25 pass, setup +0.0086 ns, hold +0.0500 ns, area 71,996.358 um², wire 699,584 um, vias 398,246. V43 Tmin=3.15 ns, Fmax≈317.46 MHz, bracket 3.10 fail/3.15 pass, setup +0.0002 ns, hold +0.0298 ns, area 28,425.026 um², wire 308,005 um, vias 154,402. Electrical/DRC/antenna at обеих Tmin точках равны 0.
 
-    Следующее действие: одинаково закрыть max-cap violations или перейти на рабочий post-CTS repair build; затем при необходимости сделать period sweep. Новую математическую версию пока не создавать.
+    V43 быстрее V36 по measured Fmax на 3.17%, меньше по area на 60.52% и по wire на 55.97%. Поэтому прежняя Pareto-пара V36=timing/V43=area не сохраняется среди полностью swept kernels: isolated physical data ставит V43 впереди по обоим направлениям. Это не mathematical/end-to-end/PVT winner; V43@3.15 имеет всего 0.2 ps setup margin, практичнее считать 3.20 ns подтверждённой point с +0.0468 ns.
+
+    V39 запускался как coarse control на 6.0/5.5/5.0/4.5 ns: timing проходит, max-cap=13/3/13/6, strict pass нет. V39 Tmin/Fmax не измерен, поэтому строгую timing-доминацию не заявлять; оставить reference.
+
+    Полные данные: docs/PHYSICAL_AUDIT_V44.md и docs/PHYSICAL_SWEEP_V44.csv. Следующий этап — robustness/multi-corner или full-divider physical boundary, не V45.
 
 Источники: приложенный division_algorithm_research_log_v44(1).txt,
 docs/ARCHITECTURE.md, docs/RESULTS_V44_SYNTHESIS.md,
-docs/PHYSICAL_AUDIT_V44.md и raw GitHub Actions reports.
+docs/PHYSICAL_AUDIT_V44.md, docs/PHYSICAL_SWEEP_V44.csv и raw GitHub Actions
+reports.

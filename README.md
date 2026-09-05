@@ -1,6 +1,7 @@
 # Exact Integer Divider R&D
 
 [![Exact divider EDA](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/eda.yml/badge.svg)](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/eda.yml)
+[![V44 physical kernel audit](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/physical.yml/badge.svg)](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/physical.yml)
 
 This repository turns the V44 research checkpoint into a reproducible RTL and
 open-source ASIC synthesis experiment.
@@ -12,9 +13,10 @@ open-source ASIC synthesis experiment.
 - **V43SJ17 candidate**: signed-safe joint radix-4 recoder with 17 main rows.
 - **V44WAVE** remains a timing-bound study, not a fourth RTL candidate.
 
-The immediate rule is unchanged: do not promote a new mathematical version
-before the same compile, simulation, synthesis, mapping and STA flow has run on
-V36, V39 and V43.
+Architectural claims remain tied to common evidence: do not promote a new
+mathematical version without the same compile, simulation, synthesis, mapping
+and physical timing flow on the relevant controls. The V44 calibrated physical
+sweep below adds no V45/V46 and changes no divider mathematics.
 
 ## Implemented operation
 
@@ -56,23 +58,32 @@ The signed-cut, separate-Booth and joint-prefix identities pass another 200,000
 randomized structural cases. These are pre-RTL mathematical checks, not a
 substitute for compiled RTL simulation.
 
-The routed physical checkpoint is complete in
-[Actions run 33949336084](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33949336084).
-The same frozen mapped kernels were placed, clocked, routed and analyzed from
-final OpenRCX SPEF at the same 10 ns constraint.
+The corrected 10 ns baseline is
+[Actions run 33951165094](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33951165094).
+V36 and V43 have full reported electrical closure there; V39 remains the
+12-max-cap reference. Post-CTS `repair_timing` is enabled. `LEC_CHECK=0` is
+used only for the pinned Kepler AVX-512 crash.
 
-| Kernel | Logical cells | Logical area (um^2) | Max data arrival (ns) | Setup slack (ns) | Hold slack (ns) | Max-cap violations |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| V36RCM | 58,318 | 65,615.550 | 4.9771 | 5.1888 | 0.0556 | 1 |
-| V39C42 | 41,146 | 48,677.202 | 5.3126 | 4.8358 | 0.0223 | 11 |
-| V43SJ17 | 18,754 | 22,823.864 | 5.1048 | 5.0287 | 0.0236 | 1 |
+A calibrated sweep then rebuilt the frozen mapped V36 and V43 kernels from
+placement through detailed route, OpenRCX SPEF and final STA at every period.
+The 0.05 ns boundary run is
+[33957430113](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33957430113).
 
-At this fixed physical boundary V36 has the largest setup margin, while V43
-has the smallest logical area and routed wire length. V43 is both smaller and
-faster than V39 in this run. All three meet setup and hold and have zero
-detailed-route DRC and antenna violations, but max-capacitance violations mean
-electrical closure is incomplete. The pinned tool also required skipping its
-crashing post-CTS timing-repair helper; CTS, route and final extracted STA still
-ran. See the [physical audit](docs/PHYSICAL_AUDIT_V44.md) for the exact contract,
-caveats and routing metrics. The historical unbuffered numbers remain in
-[`docs/RESULTS_V44_SYNTHESIS.md`](docs/RESULTS_V44_SYNTHESIS.md).
+| Kernel | Pass/fail bracket (ns) | Physical Tmin (ns) | Fmax (MHz) | Setup at Tmin (ns) | Logical area (um^2) | Routed wire (um) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| V36RCM | 3.20 fail / 3.25 pass | 3.25 | 307.69 | +0.0086 | 71,996.358 | 699,584 |
+| V43SJ17 | 3.10 fail / 3.15 pass | 3.15 | 317.46 | +0.0002 | 28,425.026 | 308,005 |
+
+These frequencies come only from actually passing re-optimized physical
+periods, not from subtracting 10 ns slack. Under this isolated typical-corner
+contract V43 is 3.17% faster on the measured grid, 60.52% smaller by logical
+area and 55.97% shorter by routed wire than V36 at their respective Tmin.
+Thus the old fixed-period V36-timing/V43-area Pareto label does not survive the
+calibrated sweep. This is not end-to-end divider or PVT signoff: V43 has only
+0.2 ps setup margin at 3.15 ns, and V39 was not refined to its own Tmin.
+
+See the [physical audit](docs/PHYSICAL_AUDIT_V44.md) for the exact contract and
+caveats, [`docs/PHYSICAL_SWEEP_V44.csv`](docs/PHYSICAL_SWEEP_V44.csv) for all
+29 physical job records, and
+[`docs/RESULTS_V44_SYNTHESIS.md`](docs/RESULTS_V44_SYNTHESIS.md) for the
+historical unbuffered checkpoint.

@@ -39,7 +39,7 @@ All three mapped kernels contain the same 168 `DFFR_X1` cells.  `Tmin` is
 derived as `10 ns - worst slack`; it includes endpoint setup time.  The Fmax
 column is only its reciprocal, not a post-route frequency claim.
 
-## What the measurements say
+## What the historical mapped measurement says
 
 - V43 is the clear area leader: 65.45% smaller than V36 and 53.07% smaller
   than V39 in this isolated kernel comparison.
@@ -65,11 +65,26 @@ sweep.  Reset is an explicit false path.  Therefore the ranking is a genuine
 mapped cell-delay result, but not physical signoff and not an end-to-end
 divider Fmax.
 
-V44WAVE should consequently remain a timing-bound study. The physical
-place-and-route step is now complete for V36, V39 and V43 in
-[Actions run 33949336084](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33949336084).
-The extracted result changes the fixed-boundary timing order to V36/V43/V39;
-V43 remains the area leader and is also faster than V39 in that run. See the
-[physical audit](PHYSICAL_AUDIT_V44.md) for routed area, wire, setup/hold and
-the remaining max-capacitance violations. No new arithmetic version was
-introduced to obtain that comparison.
+## Calibrated physical cross-check
+
+The later physical flow retained these same mapped kernels and reran the
+complete placement-through-extracted-STA flow at every requested period. The
+coarse, 0.1 ns and 0.05 ns runs completed successfully through
+[Actions run 33957430113](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33957430113).
+
+| Kernel | Measured pass/fail bracket (ns) | Physical Tmin (ns) | Grid-defined Fmax (MHz) | Area at Tmin (um^2) | Wire at Tmin (um) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| V36RCM | 3.20 fail / 3.25 pass | 3.25 | 307.69 | 71,996.358 | 699,584 |
+| V43SJ17 | 3.10 fail / 3.15 pass | 3.15 | 317.46 | 28,425.026 | 308,005 |
+
+These are actual re-optimized routed periods, not `10 ns - slack`. On this
+isolated single-corner kernel boundary V43 is 3.17% faster by the measured
+grid and remains much smaller and less wired than V36. V39 was retained as a
+coarse reference; it has no electrically clean point in its four tested
+periods and no physical Tmin is claimed.
+
+See the [physical audit](PHYSICAL_AUDIT_V44.md) for the exact contract,
+per-point results and caveats, and
+[`PHYSICAL_SWEEP_V44.csv`](PHYSICAL_SWEEP_V44.csv) for all 29 job records.
+V44WAVE remains a timing-bound study. No new arithmetic version was introduced
+to obtain the physical comparison.
