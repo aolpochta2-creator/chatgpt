@@ -192,6 +192,15 @@ def main() -> None:
         "liberty_sha256": sha256(args.liberty),
         "wrapper_sha256": sha256(ROOT / "full-prep" / "full_prep_top.sv"),
         "measurement": "mapped standard-cell timing without routed parasitics",
+        "mapping_mode": "yosys-abc-fast",
+        "mapping_invocation": (
+            f"abc -fast -liberty <pinned Nangate45 Liberty> "
+            f"-D {round(args.period * 1000)}"
+        ),
+        "mapping_network_policy": (
+            "one flat full-PREP combinational network; no ROM black boxes "
+            "or hierarchy cuts"
+        ),
     })
     args.output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, indent=2, sort_keys=True))

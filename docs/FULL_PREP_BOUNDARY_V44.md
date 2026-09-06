@@ -118,10 +118,35 @@ when the workflow was cancelled.  This does not show that ROM expansion is
 impossible; it shows that the previous double-ABC, 1 ns full-top command was a
 wasteful checkpoint architecture.
 
-The new flow will perform one standard-cell mapping pass after a no-ABC Yosys
-lowering step.  Both variants use the same command, Nangate45 Liberty and delay
-constraint.  Any mapping timeout or memory failure is an infrastructure/
-feasibility outcome, not an architecture timing failure.
+Diagnostic preflight run `34016766940` at
+`d23eb8b4605dd0443d184d7245a8a7b8f2b6d965` completed ROM expansion and
+generic lowering, but both variants reached the 120-minute job timeout inside
+the same default global ABC pass.  The partial artifacts prove zero residual
+memories and record the flat networks before ABC:
+
+| variant | generic cells | ABC gates | ABC wires | inputs | outputs |
+|---|---:|---:|---:|---:|---:|
+| V36 | 127,951 | 127,791 | 127,921 | 128 | 160 |
+| V43 | 89,668 | 89,508 | 89,638 | 128 | 160 |
+
+ABC began at `06:36:39Z` for V36 and `06:36:26Z` for V43.  GitHub cancelled
+the jobs at `08:35:42Z` and `08:35:43Z`; cleanup terminated `yosys-abc` in
+both.  This is a symmetric mapping-feasibility result, not an architecture
+timing failure.  It also shows that separate GitHub matrix runners were not
+competing for one CPU and that ROM expansion itself was not the 119-minute
+bottleneck.
+
+The revised flow retains one flat full-PREP combinational network and performs
+one standard-cell mapping pass after a no-ABC Yosys lowering step, but uses the
+official Yosys 0.33 `abc -fast` path.  At that pinned Yosys source revision the
+fast Liberty script removes the expensive `fraig/scorr/dc2/dch/nf` sequence
+from the timed-out default path and uses the bounded `strash/dretime/map`
+sequence.  The actual ABC commands remain in `yosys.log`.  There is no ROM
+black box, hierarchy cut, external oracle or independently frozen ROM netlist.
+Both variants use the same command, Nangate45 Liberty and 15,000 ps delay
+constraint.  If this bounded global pass also proves impractical, a common
+explicit gate-level ROM/predictor factorization may be considered and must be
+declared as a separate methodology limitation before use.
 
 ## Single timing point
 
