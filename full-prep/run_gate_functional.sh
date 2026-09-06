@@ -23,8 +23,12 @@ done
 
 # Yosys's pinned Liberty frontend creates Boolean/sequential simulation models
 # from the exact mapping Liberty; no unrelated binary model is downloaded.
+# Nangate45 also contains unused special cells (for example CLKGATETST_X1)
+# whose internal output has no Boolean ``function``.  Skip only such cells;
+# Icarus still rejects the composed netlist if any actually instantiated cell
+# lacks a generated model.
 yosys -Q -l "$out/liberty-models.log" -p "
-    read_liberty $LIBERTY;
+    read_liberty -ignore_miss_func $LIBERTY;
     write_verilog -noattr $cell_models;
 "
 test -s "$cell_models"
