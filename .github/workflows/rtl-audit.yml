@@ -24,12 +24,9 @@ jobs:
       - name: Resolve and install Ubuntu EDA package versions
         run: |
           sudo apt-get update
-          iverilog_package=$(apt-cache policy iverilog | awk '/Candidate:/ {print $2}')
-          verilator_package=$(apt-cache policy verilator | awk '/Candidate:/ {print $2}')
-          yosys_package=$(apt-cache policy yosys | awk '/Candidate:/ {print $2}')
-          test -n "$iverilog_package"
-          test -n "$verilator_package"
-          test -n "$yosys_package"
+          iverilog_package=12.0-2build2
+          verilator_package=5.020-1
+          yosys_package=0.33-5build2
           sudo apt-get install -y --no-install-recommends \
             "iverilog=$iverilog_package" \
             "verilator=$verilator_package" \

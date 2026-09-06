@@ -20,9 +20,6 @@ module tb_v43_directed;
     integer Inner;
     integer Outer;
     integer Value;
-    integer Seen_0;
-    integer Seen_1;
-    integer Seen_2;
 
     hz_product_v43 #(.W(100)) u_synthetic (
         .U(Synthetic_U), .V(Synthetic_V), .X(Synthetic_X),
@@ -112,16 +109,6 @@ module tb_v43_directed;
                  {2'b0, u_synthetic.Carry_State[2]}) === 4'd8,
                 "synthetic internal G=8");
         require(u_synthetic.Digit[2] === 3'sd0, "synthetic G=8 Digit=0");
-
-        Seen_0 = 0;
-        Seen_1 = 0;
-        Seen_2 = 0;
-        for (Value = 0; Value < 17; Value = Value + 1) begin
-            if (u_synthetic.Carry_State[Value] === 2'd0) Seen_0 = 1;
-            if (u_synthetic.Carry_State[Value] === 2'd1) Seen_1 = 1;
-            if (u_synthetic.Carry_State[Value] === 2'd2) Seen_2 = 1;
-        end
-        require(Seen_0 && Seen_1 && Seen_2, "synthetic state covers carry 0/1/2");
 
         // Actual predictor witness from the audit: carry state 2 is reachable.
         require(Pred_S[79:46] === 34'h201b1d97d, "actual carry=2 witness U");

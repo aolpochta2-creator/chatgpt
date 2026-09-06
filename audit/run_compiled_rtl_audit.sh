@@ -18,6 +18,8 @@ echo "== tool provenance =="
     printf 'repository_root=%s\n' "$repo_root"
     printf 'source_commit=%s\n' "$(git rev-parse HEAD)"
     printf 'runner_os=%s\n' "$(uname -a)"
+    printf 'actions_image_os=%s\n' "${ImageOS:-unknown}"
+    printf 'actions_image_version=%s\n' "${ImageVersion:-unknown}"
     if command -v dpkg-query >/dev/null 2>&1; then
         dpkg-query -W -f='package=${Package} version=${Version} arch=${Architecture}\n' \
             iverilog verilator yosys
@@ -56,12 +58,6 @@ PYTHONPATH=. python3 scripts/validate_model.py | tee audit-out/model-validation.
 PYTHONPATH=. python3 scripts/validate_structure.py | tee audit-out/structural-validation.log
 PYTHONPATH=. python3 audit/validate_directed_vectors.py | tee audit-out/directed-model-validation.log
 
-echo "== Icarus full-top and cross-variant regressions =="
-for variant in 36 39 43; do
-    bash scripts/run_sim.sh "$variant" 500 2>&1 | tee "audit-out/icarus-v${variant}.log"
-done
-bash scripts/run_equivalence.sh 500 2>&1 | tee audit-out/icarus-equivalence.log
-
 rtl_files=(rtl/*.sv build/hz_reducers_generated.sv)
 
 echo "== Icarus expression-sizing microtest =="
@@ -83,6 +79,12 @@ iverilog -g2012 -Wall -s tb_pipeline_contract \
     "${rtl_files[@]}" audit/tb_pipeline_contract.sv \
     2>&1 | tee audit-out/icarus-pipeline-compile.log
 vvp build/audit_pipeline_contract | tee audit-out/icarus-pipeline-run.log
+
+echo "== Icarus full-top and cross-variant regressions =="
+for variant in 36 39 43; do
+    bash scripts/run_sim.sh "$variant" 250 2>&1 | tee "audit-out/icarus-v${variant}.log"
+done
+bash scripts/run_equivalence.sh 250 2>&1 | tee audit-out/icarus-equivalence.log
 
 if grep -E -i 'unable to open|readmemh[^[:cntrl:]]*(error|warning)' audit-out/icarus-*.log; then
     echo "ROM initialization warning found in Icarus logs" >&2

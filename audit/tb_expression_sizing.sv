@@ -128,10 +128,20 @@ module tb_expression_sizing;
             require(Candidate_M[Index] === Index,
                     "Carry_Low=1 candidate encoding");
 
-        require(!$isunknown({Product_64x32, Product_64x64, Product_S44xS31,
-                            Chained_Signed, Signed_Slice, Signed_Shift,
-                            Negated_Signed_Shift, G_Product, DL, RX, GD}),
-                "representative expressions contain X/Z");
+        // Keep these checks scalar-by-signal. Icarus 12.0 reports a false
+        // positive for one aggregate $isunknown concatenation wider than
+        // 1024 bits, while the same individual values are fully known.
+        require(!$isunknown(Product_64x32), "64x32 contains X/Z");
+        require(!$isunknown(Product_64x64), "64x64 contains X/Z");
+        require(!$isunknown(Product_S44xS31), "signed product contains X/Z");
+        require(!$isunknown(Chained_Signed), "signed chain contains X/Z");
+        require(!$isunknown(Signed_Slice), "signed slice contains X/Z");
+        require(!$isunknown(Signed_Shift), "signed shift contains X/Z");
+        require(!$isunknown(Negated_Signed_Shift), "negated shift contains X/Z");
+        require(!$isunknown(G_Product), "G_Product contains X/Z");
+        require(!$isunknown(DL), "DL contains X/Z");
+        require(!$isunknown(RX), "RX contains X/Z");
+        require(!$isunknown(GD), "GD contains X/Z");
         $display("PASS SystemVerilog expression-sizing microtests");
         $finish;
     end
