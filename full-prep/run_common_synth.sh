@@ -71,8 +71,8 @@ if (( abc_networks < 2 )); then
     echo "expected separate real predictor and ROM ABC networks, got $abc_networks" >&2
     exit 1
 fi
-grep -Fq "Extracting gate netlist of module \\hz_predictor_csa" "$out/yosys.log"
-grep -Fq "Extracting gate netlist of module \\hz_predictor_roms" "$out/yosys.log"
+grep -Eq 'Extracting gate netlist of module .*\\hz_predictor_csa' "$out/yosys.log"
+grep -Eq 'Extracting gate netlist of module .*\\hz_predictor_roms' "$out/yosys.log"
 grep -Fq 'ABC: + scorr' "$out/yosys.log"
 grep -Fq 'ABC: + dc2' "$out/yosys.log"
 grep -Fq 'ABC: + &nf' "$out/yosys.log"
@@ -82,6 +82,9 @@ if grep -Fq 'ABC: + map -D' "$out/yosys.log"; then
 fi
 printf 'ABC_MAPPED_NETWORKS=%s\n' "$abc_networks" \
     | tee -a "$out/common-mapping-contract.txt"
+test "$(grep -Ec '^module[[:space:]]+' "$out/common_predictor.mapped.v")" -eq 1
+grep -Eq '^module[[:space:]]+hz_predictor_csa' \
+    "$out/common_predictor.mapped.v"
 
 python3 full-prep/analyze_common.py \
     --directory "$out" --liberty "$LIBERTY" --period "$CLOCK_PERIOD" \

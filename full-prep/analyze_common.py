@@ -30,6 +30,27 @@ def cell_name_type_sha(module: dict) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def time_metrics(path: Path, log_path: Path) -> dict[str, float | int | None]:
+    text = path.read_text()
+    log = log_path.read_text()
+    user = re.search(r"User time \(seconds\):\s*([0-9.]+)", text)
+    system = re.search(r"System time \(seconds\):\s*([0-9.]+)", text)
+    elapsed = re.search(r"Elapsed \(wall clock\) time .*?:\s*([0-9:.]+)", text)
+    rss = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", text)
+    abc = re.search(r"\b1x abc \(([0-9.]+) sec\)", log)
+    assert user and system and elapsed and rss
+    parts = [float(part) for part in elapsed.group(1).split(":")]
+    wall = sum(value * (60 ** index)
+               for index, value in enumerate(reversed(parts)))
+    return {
+        "yosys_user_cpu_seconds": float(user.group(1)),
+        "yosys_system_cpu_seconds": float(system.group(1)),
+        "yosys_wall_seconds": wall,
+        "yosys_peak_rss_kb": int(rss.group(1)),
+        "abc_reported_cpu_seconds": float(abc.group(1)) if abc else None,
+    }
+
+
 def named_blocks(text: str, keyword: str):
     pattern = re.compile(rf"\b{re.escape(keyword)}\s*\(\s*([^\s)]+)\s*\)\s*\{{")
     for match in pattern.finditer(text):
@@ -182,6 +203,7 @@ def main() -> None:
         "mapping_scope": "one invocation in one common_mapped Actions job",
         "blackbox_or_oracle": False,
     }
+    summary.update(time_metrics(out / "common-yosys-time.txt", out / "yosys.log"))
     args.output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, indent=2, sort_keys=True))
 

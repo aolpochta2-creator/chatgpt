@@ -103,8 +103,8 @@ if (( abc_networks < 2 )); then
     echo "expected multiple variant-side ABC networks, got $abc_networks" >&2
     exit 1
 fi
-if grep -Fq "Extracting gate netlist of module \\hz_predictor_csa" "$out/yosys.log" || \
-        grep -Fq "Extracting gate netlist of module \\hz_predictor_roms" "$out/yosys.log"; then
+if grep -Eq 'Extracting gate netlist of module .*\\hz_predictor_csa' "$out/yosys.log" || \
+        grep -Eq 'Extracting gate netlist of module .*\\hz_predictor_roms' "$out/yosys.log"; then
     echo 'frozen common predictor/ROM was unexpectedly passed to variant ABC' >&2
     exit 1
 fi

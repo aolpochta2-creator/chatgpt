@@ -33,6 +33,27 @@ def stat_value(text: str, label: str) -> int:
     return int(match.group(1))
 
 
+def time_metrics(path: Path, log_path: Path) -> dict[str, float | int | None]:
+    text = path.read_text()
+    log = log_path.read_text()
+    user = re.search(r"User time \(seconds\):\s*([0-9.]+)", text)
+    system = re.search(r"System time \(seconds\):\s*([0-9.]+)", text)
+    elapsed = re.search(r"Elapsed \(wall clock\) time .*?:\s*([0-9:.]+)", text)
+    rss = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", text)
+    abc = re.search(r"\b1x abc \(([0-9.]+) sec\)", log)
+    assert user and system and elapsed and rss
+    parts = [float(part) for part in elapsed.group(1).split(":")]
+    wall = sum(value * (60 ** index)
+               for index, value in enumerate(reversed(parts)))
+    return {
+        "variant_yosys_user_cpu_seconds": float(user.group(1)),
+        "variant_yosys_system_cpu_seconds": float(system.group(1)),
+        "variant_yosys_wall_seconds": wall,
+        "variant_yosys_peak_rss_kb": int(rss.group(1)),
+        "variant_abc_reported_cpu_seconds": float(abc.group(1)) if abc else None,
+    }
+
+
 def source_file(cell: dict) -> str:
     src = str(cell.get("attributes", {}).get("src", ""))
     match = re.search(r"([^|\s]+\.sv):\d+", src)
@@ -415,6 +436,7 @@ def main() -> None:
         ),
     })
     summary.update(region_metrics)
+    summary.update(time_metrics(out / "variant-yosys-time.txt", out / "yosys.log"))
     args.output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, indent=2, sort_keys=True))
 

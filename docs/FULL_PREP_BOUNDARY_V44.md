@@ -188,6 +188,15 @@ format emission: no `synth`, `techmap`, `opt`, `clean`, or ABC pass may touch
 the imported common gates.  The common artifact, re-imported module, and
 post-flatten common cell name/type set are all hashed before physical launch.
 
+The first execution of that corrected structure, run `34028105222` at commit
+`ec338b77e6099dddd3a68f0c6ebced003954d126`, completed the one-time default-ABC
+calculation in 1,655.65 s and emitted a valid 42,015-cell,
+47,673.052-µm² common block.  Its job then failed only because a shell evidence
+check omitted Yosys's printed backtick before the escaped module name.  The
+uploaded mapped JSON/Verilog re-import and the analyzer pass independently;
+variant and physical jobs were skipped.  This run is diagnostic provenance,
+not the final fairness comparison.
+
 This corrected factorization is structurally honest but is also an explicit
 methodology limitation: ABC cannot optimize across an RTL module boundary, so absolute QoR
 may be more conservative than a tractable fully optimized flat commercial
