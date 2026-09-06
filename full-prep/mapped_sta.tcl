@@ -1,7 +1,16 @@
 set top full_prep_v44
 set liberty $::env(LIBERTY)
 set netlist $::env(NETLIST)
+set platform_dir /OpenROAD-flow-scripts/flow/platforms/nangate45
 
+foreach lef [list \
+        $platform_dir/lef/NangateOpenCellLibrary.tech.lef \
+        $platform_dir/lef/NangateOpenCellLibrary.macro.mod.lef] {
+    if {![file exists $lef] || [file size $lef] == 0} {
+        error "Missing pinned Nangate45 LEF: $lef"
+    }
+    read_lef $lef
+}
 read_liberty $liberty
 read_verilog $netlist
 link_design $top

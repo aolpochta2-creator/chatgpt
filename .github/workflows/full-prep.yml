@@ -205,7 +205,7 @@ jobs:
             printf 'VARIANT=%s\n' "$variant"
             printf 'CLOCK_PERIOD_NS=%s\n' "$CLOCK_PERIOD"
             printf 'ABC_DELAY_PS=%s\n' "$ABC_DELAY_PS"
-            printf '%s\n' 'MAPPING_FLOW=synth -noabc; one dfflibmap; one abc -liberty'
+            printf '%s\n' 'MAPPING_FLOW=synth -noabc; one dfflibmap; one abc -fast -liberty -D 15000'
             sha256sum "$LIBERTY"
             sha256sum "full-prep-out/v${variant}/full_prep_v44.mapped.v"
             sha256sum "full-prep-out/v${variant}/full_prep_v44.mapped.json"
