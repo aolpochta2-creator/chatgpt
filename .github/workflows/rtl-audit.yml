@@ -1,0 +1,54 @@
+name: V44 compiled RTL audit
+
+on:
+  push:
+    paths:
+      - 'audit/**'
+      - '.github/workflows/rtl-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v44-compiled-rtl-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiled_rtl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve and install Ubuntu EDA package versions
+        run: |
+          sudo apt-get update
+          iverilog_package=$(apt-cache policy iverilog | awk '/Candidate:/ {print $2}')
+          verilator_package=$(apt-cache policy verilator | awk '/Candidate:/ {print $2}')
+          yosys_package=$(apt-cache policy yosys | awk '/Candidate:/ {print $2}')
+          test -n "$iverilog_package"
+          test -n "$verilator_package"
+          test -n "$yosys_package"
+          sudo apt-get install -y --no-install-recommends \
+            "iverilog=$iverilog_package" \
+            "verilator=$verilator_package" \
+            "yosys=$yosys_package"
+          mkdir -p audit-out
+          printf '%s\n' \
+            "iverilog=$iverilog_package" \
+            "verilator=$verilator_package" \
+            "yosys=$yosys_package" \
+            | tee audit-out/resolved-package-versions.txt
+
+      - name: Run compiled/elaborated PREP5 V44 audit gate
+        run: bash audit/run_compiled_rtl_audit.sh
+
+      - name: Upload compiled RTL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v44-compiled-rtl-audit-evidence
+          path: audit-out/**
+          if-no-files-found: error
+          retention-days: 30
