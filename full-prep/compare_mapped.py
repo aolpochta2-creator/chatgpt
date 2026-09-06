@@ -44,6 +44,7 @@ for key in (
     "common_reimport_module_json_sha256",
     "common_flat_cell_count",
     "common_flat_cell_name_type_sha256",
+    "common_cell_name_hash_canonicalization",
     "common_dff_cells",
     "common_boundary_ports",
     "mapped_tool_versions_sha256",
@@ -86,6 +87,8 @@ assert COMMON["memories"] == 0
 assert COMMON["blackbox_or_oracle"] is False
 assert COMMON["netlist_naming_policy"] == \
     V36["common_netlist_naming_policy"]
+assert COMMON["cell_name_hash_canonicalization"] == \
+    V36["common_cell_name_hash_canonicalization"]
 assert COMMON["mapped_tool_versions_sha256"] == \
     V36["mapped_tool_versions_sha256"]
 assert COMMON["rom_sha256"] == V36["rom_sha256"]
@@ -125,8 +128,12 @@ deltas = {}
 for key in metric_keys:
     v36 = V36[key]
     v43 = V43[key]
-    delta = v43 - v36
-    percent = (delta / v36 * 100.0) if v36 else None
+    if v36 is None or v43 is None:
+        delta = None
+        percent = None
+    else:
+        delta = v43 - v36
+        percent = (delta / v36 * 100.0) if v36 else None
     rows.append({
         "metric": key,
         "v36": v36,
@@ -150,6 +157,8 @@ fairness = {
         COMMON["reimport_module_json_sha256"],
     "common_flat_cell_name_type_sha256":
         COMMON["reimport_cell_name_type_sha256"],
+    "common_cell_name_hash_canonicalization":
+        COMMON["cell_name_hash_canonicalization"],
     "liberty_sha256": COMMON["liberty_sha256"],
     "mapped_tool_versions_sha256": COMMON["mapped_tool_versions_sha256"],
     "netlist_naming_policy": COMMON["netlist_naming_policy"],

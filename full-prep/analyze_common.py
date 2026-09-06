@@ -23,9 +23,15 @@ def module_sha(module: dict) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def canonical_cell_name(name: str) -> str:
+    """Ignore only the leading JSON spelling of a Verilog escaped name."""
+    return name[1:] if name.startswith("\\") else name
+
+
 def cell_name_type_sha(module: dict) -> str:
     payload = json.dumps(sorted(
-        (name, cell["type"]) for name, cell in module.get("cells", {}).items()
+        (canonical_cell_name(name), cell["type"])
+        for name, cell in module.get("cells", {}).items()
     ), separators=(",", ":")).encode()
     return hashlib.sha256(payload).hexdigest()
 
@@ -200,6 +206,10 @@ def main() -> None:
         "reimport_json_sha256": sha256(reimport_json),
         "reimport_module_json_sha256": module_sha(reimport_module),
         "reimport_cell_name_type_sha256": cell_name_type_sha(reimport_module),
+        "cell_name_hash_canonicalization": (
+            "remove exactly one leading backslash used by Yosys JSON for a "
+            "Verilog escaped identifier; retain the rest of the name and type"
+        ),
         "yosys_time_sha256": sha256(out / "common-yosys-time.txt"),
         "mapped_tool_versions_sha256": sha256(out / "mapped-tool-versions.txt"),
         "abc_runtime_and_peak_memory": "recorded in common-yosys-time.txt and yosys.log",

@@ -138,8 +138,15 @@ def module_sha256(module: dict) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def canonical_cell_name(name: str) -> str:
+    """Ignore only the leading JSON spelling of a Verilog escaped name."""
+    return name[1:] if name.startswith("\\") else name
+
+
 def cell_name_type_sha256(items: list[tuple[str, str]]) -> str:
-    payload = json.dumps(sorted(items), separators=(",", ":")).encode()
+    payload = json.dumps(sorted(
+        (canonical_cell_name(name), cell_type) for name, cell_type in items
+    ), separators=(",", ":")).encode()
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -413,6 +420,8 @@ def main() -> None:
             common["reimport_module_json_sha256"],
         "common_flat_cell_count": common_flat_count,
         "common_flat_cell_name_type_sha256": common_flat_fingerprint,
+        "common_cell_name_hash_canonicalization":
+            common["cell_name_hash_canonicalization"],
         "common_dff_cells": common["dff_cells"],
         "common_boundary_ports": common["boundary_ports"],
         "rom_sha256": sha256_manifest(out / "rom-sha256.txt"),
