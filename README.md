@@ -1,6 +1,7 @@
 # Exact Integer Divider R&D
 
 [![Exact divider EDA](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/eda.yml/badge.svg)](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/eda.yml)
+[![V44 compiled RTL audit](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/rtl-audit.yml/badge.svg)](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/rtl-audit.yml)
 [![V44 physical kernel audit](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/physical.yml/badge.svg)](https://github.com/aolpochta2-creator/chatgpt/actions/workflows/physical.yml)
 
 This repository turns the V44 research checkpoint into a reproducible RTL and
@@ -77,6 +78,16 @@ including explicit PREP correction-0 and correction-4 witnesses.
 The signed-cut, separate-Booth and joint-prefix identities pass another 200,000
 randomized structural cases. These are pre-RTL mathematical checks, not a
 substitute for compiled RTL simulation.
+
+The exact production PREP5 RTL bytes are also covered by the isolated
+[compiled RTL audit](docs/RTL_COMPILED_AUDIT_V44.md). In successful
+[Actions run 34008436155](https://github.com/aolpochta2-creator/chatgpt/actions/runs/34008436155),
+pinned Icarus 12.0 compiled and simulated all three full tops, Verilator 5.020
+left zero unclassified correctness-relevant diagnostics, and Yosys 0.33 passed
+135 checks of elaborated critical widths/types. ROMs are generated and hashed
+before compilation. This strengthens the source-level audit to reproducible
+compiled/elaborated evidence; it is not formal proof or post-physical logical
+equivalence.
 
 The physical values below are the preserved **six-candidate historical
 baseline**, not results of the current tightening.  The corrected 10 ns run is

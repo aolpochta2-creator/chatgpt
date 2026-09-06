@@ -1,6 +1,6 @@
 # Exact integer divider — handoff-журнал V44 → physical audit
 
-Дата среза: 2026-09-05
+Дата среза: 2026-09-05; compiled-audit update: 2026-09-06
 
 Это канонический handoff для продолжения R&D exact integer divider в новом чате. Он объединяет приложенный журнал V44 с фактическим состоянием GitHub, RTL, CI, synthesis/STA и physical-flow.
 
@@ -24,6 +24,15 @@ netlists повтор seed=1 воспроизвёл проверенный physi
 environment; это не универсальный determinism claim. Поэтому PREP5 остаётся
 engineering baseline, а новый PREP5 Tmin/Fmax не объявляется. Старые PREP6
 границы сохраняются только как minimum strict-pass points проверенной сетки.
+
+Следующий correctness checkpoint закрыт без изменения production RTL:
+commit `c2d36e4ff1aa3015c20f5816bd0f462e99b7a64c`, successful run
+`34008436155`. Exact PREP5 bytes зафиксированы SHA-256 manifest. Icarus 12.0
+скомпилировал и исполнил все full tops и directed pipeline/V43/sizing tests;
+Verilator 5.020 оставил 0 unresolved correctness diagnostics; Yosys 0.33
+проверил 135 elaborated width/type assertions. Это позволяет заменить старый
+вердикт `proof/portability gaps, no counterexample` на compiled-evidence
+statement, но whole-divider formal proof и post-physical LEC остаются open.
 
 ## 1. Цель и жёсткие правила
 
@@ -100,6 +109,10 @@ engineering baseline, а новый PREP5 Tmin/Fmax не объявляется.
   `0ea49ea973c964ccc35f106c4cb1b7c1d89f4fd0` / `33973681605`;
 - parser fix и successful V43 seed-check commit/run:
   `26494445f38875a28c76c10d7b69019cff36ee5f` / `33975505349`;
+- documentation audit-close commit:
+  `abdb3bec4986b8ea27ec03ebbd19fe3d0dc5c26b`;
+- canonical compiled/elaborated PREP5 commit/run:
+  `c2d36e4ff1aa3015c20f5816bd0f462e99b7a64c` / `34008436155`;
 - последний physical-sweep code head до reporting:
   `2efb847b065f96e244db3b2c5a1032564a1a57e8`;
 - handoff-файл и его уточнения уже закоммичены в main; ссылку на актуальный main см. в заголовке/репозитории;
@@ -114,17 +127,19 @@ engineering baseline, а новый PREP5 Tmin/Fmax не объявляется.
 - scripts/run_synth.sh, scripts/sta.tcl;
 - .github/workflows/eda.yml — единый compile/simulation/Yosys/ABC/OpenSTA flow;
 - .github/workflows/physical.yml — controlled physical kernel audit;
+- .github/workflows/rtl-audit.yml — byte-locked Icarus/Verilator/Yosys audit;
 - physical/config.mk, constraints.sdc, baseline.tcl, run.sh, report.tcl, validate_reports.py, image.txt.
 - docs/PHYSICAL_SWEEP_V44.csv — исторический 29-row PREP6 physical dataset;
 - docs/PHYSICAL_PREP5_V44.csv — три новые PREP5 physical measurements;
 - docs/PHYSICAL_PREP_PAIRED_V44.csv — controlled primary и seed-check dataset;
 - docs/MATH_AUDIT_V44_PREP_TIGHTENING.md — theorem и endpoint witnesses.
+- docs/RTL_COMPILED_AUDIT_V44.md — compiled/elaborated audit evidence.
 
 Архитектурная спецификация: docs/ARCHITECTURE.md.
 
 ## 5. Функциональная и математическая проверка
 
-В текущем зелёном CI run `33963084077`:
+В mapped EDA run `33963084077`:
 
 - model: 100,012 exact normalized divisions, включая directed correction=4/0;
 - structural model: 200,000 signed-cut/V36/V39/V43 identities;
@@ -134,6 +149,30 @@ engineering baseline, а новый PREP5 Tmin/Fmax не объявляется.
   259 back-to-back vectors;
 - Yosys/ABC и OpenSTA запускаются на одной Nangate45 typical Liberty и
   сравнивают PREP5 с frozen PREP6 в тех же jobs.
+
+Новый изолированный compiled RTL run `34008436155` проверяет exact current
+production PREP5, не frozen kernel:
+
+- pinned packages: Icarus `12.0-2build2`, Verilator `5.020-1`, Yosys
+  `0.33-5build2`;
+- model/structure: 100,012 / 200,000; 11 named directed vectors;
+- Icarus: sizing и V43 directed PASS, pipeline PASS на 22 edges, full tops
+  263/263/263, V36/V39/V43 equivalence 259;
+- Verilator: 43 unique production diagnostics, из них 33 style и 10
+  intentional audited sizing, 0 unresolved correctness-relevant;
+- Yosys: `hierarchy -check`, `proc`, `check -assert` для всех tops и 135
+  critical width/type checks;
+- generated ROM hashes проверены до compile, production RTL SHA manifest — до
+  и после gate.
+
+Directed compiled set включает PREP corrections 0..4, correction endpoint
+witnesses, FINAL correction=3 witness, обе стороны m=2048 bucket edge,
+`D=2^64-1`, special `D=2^63` при X=0 и X=D-1, R=0, back-to-back/bubble/invalid
+последовательности, reset flush и first post-reset transaction. Post-NBA
+контракт проверен явно: input на `E_t` соответствует output после NBA на
+`E_(t+1)`. V43 test проверяет carry 0/1/2, exhaustive local/compose tables,
+synthetic G=8 -> Digit=0 и actual carry=2 witness; actual predictor G=8
+reachability не заявляется.
 
 Исторические analytical checks журнала: V36 — 1,204,184 full divisions и 1,000,000 identities; V37 — 1,000,000 Booth products и 500,000 identities; V39 — 1,500,000 arithmetic checks плюс 32 exhaustive 4:2 cases; V41 — 1,000,384 products; V42 — 49/49 state compositions и 1,000,064 recoder tests; V43 — 1,000,000 signed-cut identities и 600,000 actual signed-CSA predictor tests. Это математические evidence, а не замена RTL/STA.
 
@@ -364,6 +403,9 @@ PREP5 остаётся engineering baseline: это минимальная то�
 - Текущий V39 остаётся generic 3:2 row tree, текущий V43 — generic row reducer;
   proof-level packed/Dadda структуры журналом доказаны не полностью в RTL.
 - V44WAVE остаётся timing-bound study. `g_L` не внедрён; V45/V46 не создавались.
+- Production PREP5 теперь имеет reproducible compiled/elaborated evidence, но
+  whole-divider formal proof и post-physical logical equivalence ещё не
+  закрыты. Наличие final netlist/168 DFF не заменяет LEC.
 
 Повторный Tmin search не нужен для выбора engineering baseline: PREP5 уже
 остаётся им. Если проекту понадобится новый PREP5 frequency claim, сначала
@@ -376,6 +418,10 @@ PREP5 остаётся engineering baseline: это минимальная то�
     Продолжаем R&D exact integer divider в https://github.com/aolpochta2-creator/chatgpt. Канонический контекст: docs/CHAT_HANDOFF_V44_2026-09-05.md.
 
     Математика V44 остаётся неизменной: PREP correction exact 0..4, p+5 никогда не выбирается, FINAL остаётся 0..3. PREP5 — production/engineering baseline. g_L не внедрять, V45/V46 не создавать, predictor/cut=46/t=32/V43 recoder не менять.
+
+    Audit wording close: commit abdb3bec4986b8ea27ec03ebbd19fe3d0dc5c26b. GPL/GRT seed mechanisms были действенными; DRT получил OR_SEED, но OR_K=0 означал zero random-order swaps при полностью выполненном detailed route. Repeat seed=1 — только scoped reproducibility observation для двух V43 netlists. PREP5 max-cap seed1 не повторился seed2, но двух seeds недостаточно исключить повышенную electrical propensity. Historical PREP6 numbers — minimum strict-pass points tested grid, не continuous/robust/signoff Fmax. LEC_CHECK=0 не отключает repair/STA/RC, но post-physical equivalence остаётся open.
+
+    Compiled RTL gate: canonical commit c2d36e4ff1aa3015c20f5816bd0f462e99b7a64c, successful run 34008436155. Exact production PREP5 RTL byte-locked. Tools: Icarus 12.0-2build2, Verilator 5.020-1, Yosys 0.33-5build2. Model 100012, structural 200000, 11 named directed; Icarus full tops 263 each and cross-variant equivalence 259; post-NBA pipeline 22 edges; V43 local/compose/carry/synthetic-G8 checks PASS; Verilator 43 unique diagnostics classified, 0 unresolved; Yosys 135 elaborated width/type checks PASS. ROMs generated and hash-checked before compile. Verdict upgraded to reproducible compiled/elaborated evidence PASS, while whole-divider formal and post-physical LEC remain open.
 
     Controlled same-run PREP6/PREP5 experiment: canonical primary commit 0ea49ea973c964ccc35f106c4cb1b7c1d89f4fd0, run 33973681605. Production PREP5 RTL byte-identical исходному baseline; PREP6 — build-only literal reference с единственным восстановленным M=5 case. Joint Icarus control test: 640 legal pairs plus M=5. Same-run mapped: V36 55697/63263.844 -> 54618/62285.496 cells/um²; V43 17599/21837.004 -> 17106/21120.400.
 
@@ -393,4 +439,5 @@ PREP5 остаётся engineering baseline: это минимальная то�
 docs/ARCHITECTURE.md, docs/RESULTS_V44_SYNTHESIS.md,
 docs/PHYSICAL_AUDIT_V44.md, docs/PHYSICAL_SWEEP_V44.csv,
 docs/PHYSICAL_PREP5_V44.csv, docs/PHYSICAL_PREP_PAIRED_V44.csv,
-docs/MATH_AUDIT_V44_PREP_TIGHTENING.md и raw GitHub Actions reports.
+docs/MATH_AUDIT_V44_PREP_TIGHTENING.md,
+docs/RTL_COMPILED_AUDIT_V44.md и raw GitHub Actions reports.
