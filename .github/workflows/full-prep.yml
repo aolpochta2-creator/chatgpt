@@ -6,6 +6,15 @@ on:
       - 'full-prep/**'
       - '.github/workflows/full-prep.yml'
   workflow_dispatch:
+    inputs:
+      stage:
+        description: Highest full-PREP stage to run
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - physical
 
 permissions:
   contents: read
@@ -15,6 +24,65 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  toolchain:
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lock image and inspect its exact DRT source semantics
+        id: image
+        run: |
+          image=$(cat physical/image.txt)
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          mkdir -p full-prep-toolchain/openroad-source full-prep-toolchain/orfs-source
+          cp physical/image.txt full-prep-toolchain/image.txt
+          openroad_commit=84e3ff1eb2c36302cef42e4f70a69efe4cfbb126
+          orfs_commit=0c914a7471340da86058dfe4d25d537f0282a508
+          for path in \
+            src/drt/src/TritonRoute.tcl \
+            src/drt/src/drt-global.h \
+            src/drt/src/dr/FlexDR_maze.cpp; do
+            output="full-prep-toolchain/openroad-source/${path//\//__}"
+            curl --fail --location --retry 3 \
+              "https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD/${openroad_commit}/${path}" \
+              --output "$output"
+          done
+          for path in flow/Makefile flow/scripts/detail_route.tcl flow/scripts/variables.yaml; do
+            output="full-prep-toolchain/orfs-source/${path//\//__}"
+            curl --fail --location --retry 3 \
+              "https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD-flow-scripts/${orfs_commit}/${path}" \
+              --output "$output"
+          done
+          grep -Fq 'set or_seed -1' \
+            full-prep-toolchain/openroad-source/src__drt__src__TritonRoute.tcl
+          grep -Fq 'set or_k 0' \
+            full-prep-toolchain/openroad-source/src__drt__src__TritonRoute.tcl
+          grep -Fq 'rerouteNets.size()) * router_cfg_->OR_K' \
+            full-prep-toolchain/openroad-source/src__drt__src__dr__FlexDR_maze.cpp
+          grep -Fq 'std::mt19937 generator(router_cfg_->OR_SEED)' \
+            full-prep-toolchain/openroad-source/src__drt__src__dr__FlexDR_maze.cpp
+          test "$(sha256sum full-prep-toolchain/orfs-source/flow__Makefile | cut -d' ' -f1)" = \
+            036a76c4b673214f346491ff548d7bd2af2ab74de0351975197d22f081ea3216
+          {
+            printf 'ORFS_IMAGE=%s\n' "$image"
+            printf 'ORFS_PLATFORM_COMMIT=%s\n' "$orfs_commit"
+            printf 'OPENROAD_IMAGE_SOURCE_COMMIT=%s\n' "$openroad_commit"
+            printf '%s\n' 'OPENROAD_IMAGE_VERSION_EXPECTED=26Q3-1867-g84e3ff1eb2'
+            printf '%s\n' 'DRT_OR_K_SEMANTICS=floor(OR_K * rerouteNets.size()) seeded adjacent swaps at maze iteration zero'
+            sha256sum full-prep-toolchain/openroad-source/*
+            sha256sum full-prep-toolchain/orfs-source/*
+          } | tee full-prep-toolchain/source-lock.txt
+
+      - name: Upload physical/source toolchain lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-prep-toolchain-lock
+          path: full-prep-toolchain/**
+          if-no-files-found: error
+          retention-days: 30
+
   functional:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -41,5 +109,244 @@ jobs:
         with:
           name: full-prep-functional-evidence
           path: full-prep-out/**
+          if-no-files-found: error
+          retention-days: 30
+
+  mapped:
+    name: mapped (V${{ matrix.variant }})
+    needs: [toolchain, functional]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [36, 43]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the pinned mapped-source Yosys package
+        run: |
+          sudo apt-get update
+          yosys_package=0.33-5build2
+          sudo apt-get install -y --no-install-recommends "yosys=$yosys_package"
+          mkdir -p "full-prep-out/v${{ matrix.variant }}"
+          {
+            printf 'yosys_package=%s\n' "$yosys_package"
+            yosys -V
+            yosys-abc -v 2>&1 || true
+          } | tee "full-prep-out/v${{ matrix.variant }}/mapped-tool-versions.txt"
+
+      - name: Fetch pinned Nangate45 Liberty
+        run: |
+          mkdir -p build/lib
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD-flow-scripts/0c914a7471340da86058dfe4d25d537f0282a508/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib \
+            --output build/lib/NangateOpenCellLibrary_typical.lib
+          test "$(sha256sum build/lib/NangateOpenCellLibrary_typical.lib | cut -d' ' -f1)" = \
+            8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1
+
+      - name: One-pass full-PREP standard-cell mapping
+        env:
+          LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
+        run: |
+          set -a
+          source full-prep/contract.env
+          set +a
+          bash full-prep/run_synth.sh "${{ matrix.variant }}"
+
+      - name: Mapped timing in the pinned physical image
+        env:
+          ORFS_IMAGE: ${{ needs.toolchain.outputs.image }}
+        run: |
+          set -a
+          source full-prep/contract.env
+          set +a
+          variant="${{ matrix.variant }}"
+          docker run --rm --entrypoint bash \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -e CLOCK_PERIOD \
+            -e LIBERTY=/work/build/lib/NangateOpenCellLibrary_typical.lib \
+            -e "NETLIST=/work/full-prep-out/v${variant}/full_prep_v44.mapped.v" \
+            "$ORFS_IMAGE" -lc \
+            '/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -exit full-prep/mapped_sta.tcl' \
+            2>&1 | tee "full-prep-out/v${variant}/mapped_sta.rpt"
+          grep -q 'FULL_PREP_MAPPED_STA_COMPLETE' \
+            "full-prep-out/v${variant}/mapped_sta.rpt"
+          if grep -Eq '^(Error:|Error |\[ERROR)' \
+            "full-prep-out/v${variant}/mapped_sta.rpt"; then
+            exit 1
+          fi
+
+      - name: Validate and summarize mapped boundary
+        env:
+          LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
+        run: |
+          set -a
+          source full-prep/contract.env
+          set +a
+          variant="${{ matrix.variant }}"
+          python3 scripts/report_mapped.py \
+            --top full_prep_v44 --label "full-prep-v${variant}" \
+            --json "full-prep-out/v${variant}/full_prep_v44.mapped.json" \
+            --stat "full-prep-out/v${variant}/stat.rpt" \
+            --sta "full-prep-out/v${variant}/mapped_sta.rpt" \
+            --liberty "$LIBERTY" \
+            --output "full-prep-out/v${variant}/mapped_base_metrics.json"
+          python3 full-prep/analyze_mapped.py \
+            --variant "$variant" \
+            --directory "full-prep-out/v${variant}" \
+            --liberty "$LIBERTY" \
+            --base-metrics "full-prep-out/v${variant}/mapped_base_metrics.json" \
+            --period "$CLOCK_PERIOD" \
+            --output "full-prep-out/v${variant}/mapped_metrics.json"
+          {
+            printf 'SOURCE_COMMIT=%s\n' "$GITHUB_SHA"
+            printf 'SOURCE_RUN_ID=%s\n' "$GITHUB_RUN_ID"
+            printf 'VARIANT=%s\n' "$variant"
+            printf 'CLOCK_PERIOD_NS=%s\n' "$CLOCK_PERIOD"
+            printf 'ABC_DELAY_PS=%s\n' "$ABC_DELAY_PS"
+            printf '%s\n' 'MAPPING_FLOW=synth -noabc; one dfflibmap; one abc -liberty'
+            sha256sum "$LIBERTY"
+            sha256sum "full-prep-out/v${variant}/full_prep_v44.mapped.v"
+            sha256sum "full-prep-out/v${variant}/full_prep_v44.mapped.json"
+            sha256sum build/coeff_rom.mem build/square_a.mem build/square_b.mem build/cube.mem
+          } | tee "full-prep-out/v${variant}/mapping-provenance.txt"
+
+      - name: Upload mapped full-PREP evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-prep-mapped-v${{ matrix.variant }}
+          path: full-prep-out/v${{ matrix.variant }}/**
+          if-no-files-found: warn
+          retention-days: 30
+
+  compare_mapped:
+    needs: mapped
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-prep-mapped-v36
+          path: full-prep-out/v36
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-prep-mapped-v43
+          path: full-prep-out/v43
+      - name: Build the same-run mapped comparison
+        run: python3 full-prep/compare_mapped.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: full-prep-mapped-comparison
+          path: |
+            full-prep-out/mapped_comparison.json
+            full-prep-out/mapped_comparison.csv
+          if-no-files-found: error
+          retention-days: 30
+
+  physical:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.stage == 'physical') ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[full-prep-physical]'))
+    name: physical (V${{ matrix.variant }}, 15.0 ns, seed 1)
+    needs: [toolchain, functional, mapped, compare_mapped]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [36, 43]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-prep-mapped-v${{ matrix.variant }}
+          path: full-prep-out/v${{ matrix.variant }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-prep-toolchain-lock
+          path: full-prep-toolchain
+
+      - name: Regenerate and verify the exact ROM payload
+        run: |
+          python3 scripts/gen_roms.py
+          sha256sum --check audit/rom_v44.sha256
+
+      - name: Fetch the pinned Nangate45 platform
+        run: |
+          git clone --filter=blob:none --no-checkout \
+            https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts.git platform-source
+          git -C platform-source sparse-checkout set flow/platforms/nangate45
+          git -C platform-source checkout 0c914a7471340da86058dfe4d25d537f0282a508
+          mkdir -p platforms
+          cp -r platform-source/flow/platforms/nangate45 platforms/
+          test "$(sha256sum platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib | cut -d' ' -f1)" = \
+            8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1
+
+      - name: Complete routed full-PREP implementation and extracted STA
+        env:
+          ORFS_IMAGE: ${{ needs.toolchain.outputs.image }}
+          VARIANT: ${{ matrix.variant }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+        run: |
+          docker run --rm --entrypoint bash \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -e VARIANT -e SOURCE_COMMIT -e SOURCE_RUN_ID -e ORFS_IMAGE \
+            "$ORFS_IMAGE" full-prep/run_physical.sh
+
+      - name: Upload complete routed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-prep-v${{ matrix.variant }}-physical-reports
+          path: |
+            full-prep-work/toolchain.txt
+            full-prep-work/mapped_baseline.rpt
+            full-prep-work/tie_materialization.log
+            full-prep-work/flow.log
+            full-prep-work/physical_summary.json
+            full-prep-work/tooling/**
+            full-prep-work/logs/**
+            full-prep-work/reports/**
+            full-prep-work/results/**/6_final.*
+            full-prep-work/results/**/4*lec*
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload compact routed summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-prep-v${{ matrix.variant }}-physical-summary
+          path: full-prep-work/physical_summary.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  compare_physical:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.stage == 'physical') ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[full-prep-physical]'))
+    needs: physical
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-prep-v36-physical-summary
+          path: full-prep-physical-compare/v36
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-prep-v43-physical-summary
+          path: full-prep-physical-compare/v43
+      - name: Build the same-contract routed comparison
+        run: python3 full-prep/compare_physical.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: full-prep-physical-comparison
+          path: |
+            full-prep-physical-compare/physical_comparison.json
+            full-prep-physical-compare/physical_comparison.csv
           if-no-files-found: error
           retention-days: 30

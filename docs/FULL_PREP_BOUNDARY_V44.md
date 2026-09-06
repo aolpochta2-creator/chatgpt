@@ -169,15 +169,24 @@ sweep and no best-seed selection.
 
 Pinned-source inspection gives the following exact DRT semantics:
 
-- ORFS commit `0c914a...`, `flow/scripts/detail_route.tcl`, passes `OR_SEED`
-  and `OR_K` only when the environment variables are nonempty;
-- its OpenROAD submodule is commit
-  `0b54bb3203e0895f87940ff982358a6e4d406e28`;
-- `src/drt/src/TritonRoute.tcl` defaults `or_seed=-1` and `or_k=0`;
+- the image reports OpenROAD `26Q3-1867-g84e3ff1eb2`, resolving to source
+  commit `84e3ff1eb2c36302cef42e4f70a69efe4cfbb126`;
+- the image `/OpenROAD-flow-scripts/flow/Makefile` hash is
+  `036a76c4b673214f346491ff548d7bd2af2ab74de0351975197d22f081ea3216`,
+  equal to ORFS commit `0c914a...`; its `flow/scripts/detail_route.tcl`
+  passes `OR_SEED` and `OR_K` only when the environment variables are
+  nonempty;
+- at the actual image's OpenROAD commit, `src/drt/src/TritonRoute.tcl`
+  defaults `or_seed=-1` and `or_k=0`;
 - `src/drt/src/dr/FlexDR_maze.cpp`,
   `FlexDRWorker::mazeIterInit_sortRerouteNets`, computes
   `numSwap = rerouteNets.size() * OR_K` and performs that many seeded adjacent
   swaps only for maze iteration zero.
+
+The source-tree OpenROAD submodule recorded by ORFS commit `0c914a...` is
+`0b54bb3203e0895f87940ff982358a6e4d406e28`, but the image banner above is the
+authority for the binary actually used.  The relevant default and swap code
+was checked at `84e3ff1e...`, not inferred from the different submodule pin.
 
 The new checkpoint sets `GPL_RANDOM_SEED=1`, `GRT_SEED=1`, `OR_SEED=1` and
 `OR_K=1.0`.  Thus DRT performs one seeded adjacent-swap attempt per reroute-net
