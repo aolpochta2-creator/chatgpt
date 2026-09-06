@@ -60,10 +60,15 @@ yet a ranking of fully implemented versions from the research journal.
   168 DFFs. Counts distinguish logical cells from filler/tap cells.
 - Every point reruns placement, CTS, post-CTS `repair_timing`, global route,
   detailed route, OpenRCX extraction and final STA. `LEC_CHECK=0` works around
-  the pinned Kepler LEC AVX-512 crash; it does not disable timing repair.
+  the pinned Kepler LEC AVX-512 crash; it does not disable timing repair or
+  invalidate the measured timing, geometry or extracted RC.
 - Reports require detailed routing and nonempty final ODB, DEF, GDS, Verilog,
   SDC and OpenRCX SPEF files. Clock-tree insertion and hold effects are
   included in the physical reports.
+
+Post-physical logical equivalence remains a separate open gate. Retaining 168
+DFFs and producing a final netlist are useful structural checks, not an
+equivalence proof.
 
 A completed Actions job and physical closure are different statuses. A job is
 successful when it produces a valid measurement even if final timing or
@@ -159,22 +164,25 @@ V39 was intentionally kept to the requested coarse control grid:
 | V39 | 5.00 | +0.2325 | +0.0227 | 13 | 48,720.560 | 667,080 | electrical |
 | V39 | 4.50 | +0.2165 | +0.0238 | 6 | 49,027.790 | 663,725 | electrical |
 
-## Measured physical Tmin and interpretation
+## Historical PREP6 tested-grid boundary
 
-`Tmin` is the smallest actually implemented strict pass on the tested grid.
-`Fmax` is calculated only as `1000 / Tmin(ns)`; no value is derived from the
-10 ns slack.
+The value in the boundary column is the minimum strict-pass point actually
+implemented on the tested historical PREP6 grid. Its corresponding grid
+frequency is calculated only as `1000 / period(ns)`; no value is derived from
+the 10 ns slack. These points are not a continuous optimum, a robust Fmax, or
+a signoff Fmax.
 
-| Kernel | Pass/fail bracket (ns) | Tmin (ns) | Fmax (MHz) | Setup at Tmin (ns) | Hold (ns) | Cells | Area (um^2) | Wire (um) | Vias |
+| Kernel | Pass/fail bracket (ns) | Minimum strict-pass tested period (ns) | Corresponding tested-grid frequency (MHz) | Setup at boundary (ns) | Hold (ns) | Cells | Area (um^2) | Wire (um) | Vias |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | V36RCM | 3.20 fail / 3.25 pass | 3.25 | 307.69 | +0.0086 | +0.0500 | 64,940 | 71,996.358 | 699,584 | 398,246 |
 | V43SJ17 | 3.10 fail / 3.15 pass | 3.15 | 317.46 | +0.0002 | +0.0298 | 24,717 | 28,425.026 | 308,005 | 154,402 |
 
-V43's measured period is 3.08% shorter and its grid-defined Fmax is 3.17%
-higher than V36's. At their respective Tmin implementations, V43 uses 60.52%
-less logical area, 55.97% less routed wire and 61.23% fewer vias. At the common
-strict-pass point of 3.5 ns, V43 also has more setup margin (+0.0716 versus
-+0.0387 ns), 62.96% less area and 57.95% less wire.
+On this tested historical PREP6 grid, V43's minimum strict-pass period is 3.08%
+shorter and its corresponding frequency is 3.17% higher than V36's. At those
+two boundary implementations, V43 uses 60.52% less logical area, 55.97% less
+routed wire and 61.23% fewer vias. At the common strict-pass point of 3.5 ns,
+V43 also has more setup margin (+0.0716 versus +0.0387 ns), 62.96% less area
+and 57.95% less wire.
 
 Therefore the old fixed-10-ns Pareto label "V36=timing, V43=area/wiring" does
 not survive calibrated re-optimized periods: among the two fully swept
@@ -287,15 +295,21 @@ comparison and an ABC top-name perturbation. The same-run mapped inputs are:
 
 The stage and direct-load counts are structural diagnostics from the mapped
 JSON, not STA. They show why "fewer cells" is not equivalent to "shallower"
-for V36: PREP5 reduces load and area but ABC selects a deeper Boolean DAG. V43
-keeps its maximum structural depth while reducing load.
+for V36: PREP5 reduces load and area while ABC selects a deeper Boolean DAG.
+That deeper mapped DAG is consistent with the observed V36 timing degradation,
+but the individual causal contributions of remapping, placement, sizing, CTS,
+repair and routing were not isolated. V43 keeps its maximum structural depth
+while reducing load.
 
-Every physical job fixes `GPL_RANDOM_SEED`, `GRT_SEED` and `OR_SEED` to the
-matrix seed. The raw logs confirm `global_placement -random_seed`,
-`set_global_routing_random -seed` and `detailed_route -or_seed`. All other
-contract values remain frozen: Nangate45, ORFS commit/image, die/core, density,
-SDC loads/transitions/fanout/reset, `SKIP_CTS_REPAIR_TIMING=0` and
-`LEC_CHECK=0`.
+Every physical job sets `GPL_RANDOM_SEED`, `GRT_SEED` and `OR_SEED` to the
+matrix value. The GPL and GRT seeds are effective and the raw logs confirm
+`global_placement -random_seed` and `set_global_routing_random -seed`. DRT also
+receives `OR_SEED`, but `OR_K` was not set and retained its default value 0;
+therefore the random-order DRT swap mechanism executed zero swaps. Detailed
+routing itself still ran fully. The final layout can still change because GPL
+and GRT change, so DRT receives a different routed state. All other contract
+values remain frozen: Nangate45, ORFS commit/image, die/core, density, SDC
+loads/transitions/fanout/reset, `SKIP_CTS_REPAIR_TIMING=0` and `LEC_CHECK=0`.
 
 ### Primary paired matrix
 
@@ -335,7 +349,7 @@ post-CTS `repair_timing` call, and nonempty final ODB/DEF/GDS/netlist/SDC/SPEF.
 The exact job IDs, artifact sizes, critical endpoints and runtime are in
 [`PHYSICAL_PREP_PAIRED_V44.csv`](PHYSICAL_PREP_PAIRED_V44.csv).
 
-The causal PREP5-PREP6 deltas from this primary matrix are:
+The paired PREP5-PREP6 deltas from this primary matrix are:
 
 | Point | Setup / hold delta (ns) | Arrival delta (ns) | Cells | Area | Wire | Vias | Max-cap / fanout | CTS setup/hold | GRT setup/hold/repair |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -381,20 +395,24 @@ physical jobs conclude success.
 | PREP5 | 2 | +0.0547 / +0.0280 | 3.2242 | 0 / 0 / 0 | 22,896 / 26,536.160 | 295,716 / 145,641 | 5/5; 5/0/3 | pass |
 
 Setup and hold TNS, max-transition, max-fanout, DRC and antenna are zero in
-all four rows. Repeating seed 1 in the second commit reproduces every physical
-metric and every artifact byte size exactly (runtime and provenance metadata
-excluded). The flow is therefore deterministic at a fixed seed.
+all four rows. For the two tested V43 netlists at 3.15 ns, repeating seed 1
+reproduced the checked physical result in the tested environment. The
+ODB/DEF/final-netlist/SDC hashes matched; SPEF differed only by its date and GDS
+only by timestamps. This is a scoped reproducibility observation, not a
+universal claim that the flow is deterministic at every fixed seed.
 
 Seed 2 changes PREP6 setup by +26.9 ps and PREP5 setup by +6.7 ps. The paired
 PREP5 setup advantage remains positive but ranges from +47.4 ps at seed 1 to
 +27.2 ps at seed 2; its 20.2 ps spread is comparable with the PREP6 seed
 scatter. PREP5 area remains 6.10-6.51% lower, wire 3.45-3.77% shorter and vias
-5.46-5.49% lower. The seed-1 max-cap residual disappears at seed 2, proving it
-is not a stable PREP5 electrical regression.
+5.46-5.49% lower. The PREP5 max-cap violation observed at seed 1 did not
+reproduce at seed 2. Electrical closure is seed-sensitive in these tested
+cases, but two seeds are insufficient to exclude an increased PREP5 propensity
+for electrical violations.
 
 PREP5 therefore remains the engineering baseline: it is the mathematically
 minimal exact form and has a reproducible size/wiring benefit. This experiment
-does **not** establish a universal timing gain or a new robust Tmin/Fmax. It
+does **not** establish a universal timing gain or a new PREP5 Tmin/Fmax. It
 does show one strict-clean PREP5 implementation at 3.15 ns (seed 2), but seed
 1 is electrically non-clean and 3.10 ns was not tested. The 317.46 MHz number
 must not be promoted as a new PREP5 frequency claim from a selected seed.

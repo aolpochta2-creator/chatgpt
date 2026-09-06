@@ -83,25 +83,30 @@ baseline**, not results of the current tightening.  The corrected 10 ns run is
 [Actions run 33951165094](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33951165094).
 V36 and V43 have full reported electrical closure there; V39 remains the
 12-max-cap reference. Post-CTS `repair_timing` is enabled. `LEC_CHECK=0` is
-used only for the pinned Kepler AVX-512 crash.
+used only for the pinned Kepler AVX-512 crash: it does not disable timing
+repair or invalidate timing/geometry/RC measurements. Post-physical logical
+equivalence remains an open gate; 168 DFFs and a final netlist are not an
+equivalence proof.
 
 A calibrated sweep then rebuilt the frozen mapped V36 and V43 kernels from
 placement through detailed route, OpenRCX SPEF and final STA at every period.
 The 0.05 ns boundary run is
 [33957430113](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33957430113).
 
-| Kernel | Pass/fail bracket (ns) | Physical Tmin (ns) | Fmax (MHz) | Setup at Tmin (ns) | Logical area (um^2) | Routed wire (um) |
+| Kernel | Historical PREP6 bracket (ns) | Minimum strict-pass tested period (ns) | Corresponding tested-grid frequency (MHz) | Setup at boundary (ns) | Logical area (um^2) | Routed wire (um) |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | V36RCM | 3.20 fail / 3.25 pass | 3.25 | 307.69 | +0.0086 | 71,996.358 | 699,584 |
 | V43SJ17 | 3.10 fail / 3.15 pass | 3.15 | 317.46 | +0.0002 | 28,425.026 | 308,005 |
 
 These frequencies come only from actually passing re-optimized physical
-periods, not from subtracting 10 ns slack. Under this isolated typical-corner
-contract V43 is 3.17% faster on the measured grid, 60.52% smaller by logical
-area and 55.97% shorter by routed wire than V36 at their respective Tmin.
+periods, not from subtracting 10 ns slack. They are minimum strict-pass points
+of the tested historical PREP6 grid, not continuous optima, robust Fmax, or
+signoff Fmax. Under this isolated typical-corner contract V43 has a 3.17%
+higher corresponding frequency on the measured grid, 60.52% less logical area
+and 55.97% less routed wire than V36 at their respective boundary points.
 Thus the old fixed-period V36-timing/V43-area Pareto label does not survive the
 calibrated sweep. This is not end-to-end divider or PVT signoff: V43 has only
-0.2 ps setup margin at 3.15 ns, and V39 was not refined to its own Tmin.
+0.2 ps setup margin at 3.15 ns, and V39 was not refined to its own boundary.
 
 Those values are intentionally retained as PREP6 history. The five-candidate
 RTL was validated and mapped in successful EDA run
@@ -114,15 +119,19 @@ one max-cap violations respectively. Therefore none is a strict PREP5 pass and
 no new Tmin/Fmax is claimed. The conditional V43 3.10/3.05 ns runs were not
 started.
 
-A later causal check rebuilt PREP6 and PREP5 from one source tree, workflow and
-fixed seed in [run 33973681605](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33973681605),
+A later paired check rebuilt PREP6 and PREP5 from one source tree, workflow and
+declared seed in [run 33973681605](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33973681605),
 then repeated V43 at seeds 1/2 in successful
 [run 33975505349](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33975505349).
 PREP5 keeps a stable V43 area reduction of 6.10-6.51% and wire reduction of
 3.45-3.77%; its setup advantage is +47.4 ps at seed 1 and +27.2 ps at seed 2.
-The seed-1 max-cap residual disappears at seed 2, which is strict clean. PREP5
-therefore remains the engineering baseline, but this seed-sensitive result is
-not promoted to a new robust Tmin/Fmax claim.
+The seed-1 max-cap residual does not reproduce at seed 2, which is strict
+clean. This establishes seed-sensitive closure in the tested cases, but two
+seeds cannot exclude an increased PREP5 propensity for electrical violations.
+The GPL and GRT seeds were effective; DRT received `OR_SEED`, but `OR_K=0`
+meant zero random-order swaps. Full detailed routing still ran, and its input
+state could change with GPL/GRT. PREP5 therefore remains the engineering
+baseline, but no new PREP5 Tmin/Fmax is claimed.
 
 See the [physical audit](docs/PHYSICAL_AUDIT_V44.md) for the exact contract and
 caveats, [`docs/PHYSICAL_SWEEP_V44.csv`](docs/PHYSICAL_SWEEP_V44.csv) for all

@@ -72,16 +72,18 @@ complete placement-through-extracted-STA flow at every requested period. The
 coarse, 0.1 ns and 0.05 ns runs completed successfully through
 [Actions run 33957430113](https://github.com/aolpochta2-creator/chatgpt/actions/runs/33957430113).
 
-| Kernel | Measured pass/fail bracket (ns) | Physical Tmin (ns) | Grid-defined Fmax (MHz) | Area at Tmin (um^2) | Wire at Tmin (um) |
+| Kernel | Historical PREP6 bracket (ns) | Minimum strict-pass tested period (ns) | Corresponding tested-grid frequency (MHz) | Area at boundary (um^2) | Wire at boundary (um) |
 | --- | --- | ---: | ---: | ---: | ---: |
 | V36RCM | 3.20 fail / 3.25 pass | 3.25 | 307.69 | 71,996.358 | 699,584 |
 | V43SJ17 | 3.10 fail / 3.15 pass | 3.15 | 317.46 | 28,425.026 | 308,005 |
 
-These are actual re-optimized routed periods, not `10 ns - slack`. On this
-isolated single-corner kernel boundary V43 is 3.17% faster by the measured
-grid and remains much smaller and less wired than V36. V39 was retained as a
-coarse reference; it has no electrically clean point in its four tested
-periods and no physical Tmin is claimed.
+These are actual re-optimized routed periods, not `10 ns - slack`. They are
+minimum strict-pass points of the tested historical PREP6 grid, not continuous
+optima, robust Fmax, or signoff Fmax. On this isolated single-corner kernel
+boundary V43 has a 3.17% higher corresponding frequency on the measured grid
+and remains much smaller and less wired than V36. V39 was retained as a coarse
+reference; it has no electrically clean point in its four tested periods and
+no physical boundary frequency is claimed.
 
 See the [physical audit](PHYSICAL_AUDIT_V44.md) for the exact contract,
 per-point results and caveats, and
