@@ -1,8 +1,8 @@
 # V44 full-PREP physical boundary manifest
 
-Status: boundary implemented and functionally validated; amended after the
-same-run mapped fairness gate in run `34023879768`; canonical physical run has
-not yet started.
+Status: boundary implemented and functionally validated; corrected frozen-
+common fairness gate passed in run `34034169511`; the one-point canonical
+physical contract is frozen below but physical results do not yet exist.
 
 Production baseline: V44 PREP5 at
 `e16f27ff14098a946fc354929cb6057af1ff0189`.  The production files under
@@ -197,6 +197,46 @@ uploaded mapped JSON/Verilog re-import and the analyzer pass independently;
 variant and physical jobs were skipped.  This run is diagnostic provenance,
 not the final fairness comparison.
 
+Run `34034169511` at commit
+`92ce678864b6435f595af4f656bd29d2cd259166` closed the corrected 15 ns mapped
+preflight.  Functional, toolchain, one-time common mapping, both composed
+gate-level simulations, both mapped STA jobs and `compare_mapped` all passed.
+The two variants consumed the same common Verilog SHA-256
+`1ce614882cc25c08dd51dee828e4579f1771ba76014e55421484c6097743b339`,
+and produced the same post-flatten common cell-name/type fingerprint
+`5019d25336a4fbbf53227ee56373ac6899b145a97af99f48bffcb35012e11964`.
+The common mapping contained 42,015 cells and 47,673.052 um2: 2,394 cells /
+2,499.868 um2 were attributed to the ROM sub-cone and 39,621 cells /
+45,173.184 um2 to the rest of the predictor.  It contained no DFFs or residual
+memories.
+
+| 15 ns mapped preflight | V36 | V43 | V43 - V36 |
+|---|---:|---:|---:|
+| logical cells | 122,416 | 72,305 | -50,111 (-40.94%) |
+| logical standard-cell area (um2) | 141,206.898 | 83,254.808 | -57,952.090 (-41.04%) |
+| data arrival (ns) | 28.1031 | 29.4702 | +1.3671 |
+| setup slack (ns) | -13.1649 | -14.5141 | -1.3492 |
+| maximum data fanout | 513 | 495 | -18 |
+| product-specific area (um2) | 79,257.094 | 21,315.378 | -57,941.716 (-73.11%) |
+| common candidate/selector/special area (um2) | 13,425.552 | 13,415.178 | -10.374 |
+| DFFs | 160 | 160 | 0 |
+
+These are mapped, unrouted diagnostics, not physical PPA or Fmax.  Both first
+mapped critical paths ran from `Divisor[5]` through the frozen predictor and
+candidate/selector region to an output register.  The older emitted common
+artifact had lost the internal ROM names, so that particular run cannot split
+the first path more finely between ROM and non-ROM predictor gates.  The next
+artifact preserves post-map names without changing topology so routed and
+mapped path attribution can make that split.
+
+The 41-vector composed-netlist simulation took 108 minutes 24 seconds for
+V36, versus 12 minutes 8 seconds for V43.  This is an Icarus event-simulation
+cost diagnostic, not an architecture PPA metric.  The canonical physical run
+retains all nine mandatory directed vectors and uses eight deterministic
+random mapped-netlist vectors; the independent source-level functional job
+continues to use 256 random vectors.  This keeps the composition check while
+avoiding a recurrent mapped-test timeout.
+
 This corrected factorization is structurally honest but is also an explicit
 methodology limitation: ABC cannot optimize across an RTL module boundary, so absolute QoR
 may be more conservative than a tractable fully optimized flat commercial
@@ -207,14 +247,20 @@ mapping decision; it does not silently fall back to `abc -fast`.
 
 ## Single timing point
 
-The mapping/fairness preflight uses **15.0 ns** as its common delay constraint.
-It is not a grid point inferred from historical 10 ns slack, PREP6 Tmin or a
-selected seed.  Run `34023879768` produced mapped arrivals near 28.7--28.8 ns,
-so 15 ns is not a conservative physical integration target.  The physical
-launch remains blocked until the corrected frozen-common mapped comparison
-passes and one conservative common period and floorplan are frozen from that
-same-run mapped evidence.  The period will be chosen once, before physical
-results, and used for both variants; it is not a Tmin search.
+The completed mapping/fairness preflight used **15.0 ns** as its common delay
+constraint.  It was not a physical grid point inferred from historical 10 ns
+slack, PREP6 Tmin or a selected seed.  Same-run frozen-common mapped arrival
+was 28.1031 ns for V36 and 29.4702 ns for V43, confirming that 15 ns was not a
+conservative physical integration target.
+
+Before any physical result, the canonical physical period is frozen at
+**40.0 ns** for both variants.  The declared selection rule takes the next
+5 ns grid point strictly above 1.25 times the largest same-run preflight
+arrival: `1.25 * 29.4702 ns = 36.83775 ns`, hence 40 ns.  This supplies about
+35.7% period margin over the largest 15 ns-targeted mapped arrival while still
+constraining a roughly 28--30 ns full-PREP combinational cone.  The canonical
+run remaps both sides and the one shared common block under that same 40 ns
+target before physical launch, and repeats the complete fairness gate.
 
 There will be no automatic second period.  If this point proves unsuitable,
 the run remains canonical diagnostic evidence and the reason is documented
@@ -239,11 +285,16 @@ The two canonical jobs will use the same:
 - mapped import, floorplan, placement, CTS, post-CTS repair, global route,
   detailed route, OpenRCX, extracted final STA and final artifact generation.
 
-The old 520 x 520 die / 500 x 500 core remains the reference geometry, but it
-is not assumed to fit this much larger full-PREP netlist.  Mapped area and
-placement-capacity checks must be completed before the canonical launch.  If
-an enlarged floorplan is required, one value is frozen for both variants
-before either physical job runs; neither variant may receive private tuning.
+The canonical floorplan is frozen at a **640 x 640 um die** and a
+**620 x 620 um core** (`DIE_AREA=0 0 640 640`,
+`CORE_AREA=10 10 630 630`) with placement density 0.45.  Against the 384,400
+um2 geometric core, the 15 ns preflight mapped areas correspond to about
+36.73% for V36 and 21.66% for V43.  The 45% nominal placement capacity is
+172,980 um2, leaving V36 about 31,773 um2, or 22.5% of its mapped area, for
+CTS/repair growth before considering detailed row/utilization effects.  This
+enlargement is frozen before results and is identical for both variants; no
+private floorplan tuning is allowed.  The old 520 x 520 die / 500 x 500 core
+is retained only as isolated-kernel context and is not used here.
 
 ## Effective seed contract
 

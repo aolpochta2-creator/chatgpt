@@ -77,6 +77,7 @@ def recursive_cost(design: dict, top: str, areas: dict[str, float]) -> dict:
     modules = design["modules"]
     counts: Counter[str] = Counter()
     costs: defaultdict[str, float] = defaultdict(float)
+    types: defaultdict[str, Counter[str]] = defaultdict(Counter)
 
     def walk(module_name: str, region: str) -> None:
         for cell in modules[module_name].get("cells", {}).values():
@@ -89,12 +90,14 @@ def recursive_cost(design: dict, top: str, areas: dict[str, float]) -> dict:
                     raise KeyError(f"mapped common cell {kind} absent from Liberty")
                 counts[next_region] += 1
                 costs[next_region] += areas[kind]
+                types[next_region][kind] += 1
 
     walk(top, "predictor_non_rom")
     return {
         region: {
             "logical_cells": counts[region],
             "logical_area_um2": costs[region],
+            "cell_type_counts": dict(sorted(types[region].items())),
         }
         for region in sorted(counts)
     }
@@ -201,6 +204,10 @@ def main() -> None:
         "mapped_tool_versions_sha256": sha256(out / "mapped-tool-versions.txt"),
         "abc_runtime_and_peak_memory": "recorded in common-yosys-time.txt and yosys.log",
         "mapping_scope": "one invocation in one common_mapped Actions job",
+        "netlist_naming_policy": (
+            "Yosys write_verilog -norename after mapping; names are provenance "
+            "only and do not change standard-cell topology"
+        ),
         "blackbox_or_oracle": False,
     }
     summary.update(time_metrics(out / "common-yosys-time.txt", out / "yosys.log"))

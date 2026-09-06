@@ -30,6 +30,7 @@ set logical_cells 0
 set flop_count 0
 set logical_area 0.0
 array set master_counts {}
+set instances [open $::env(REPORTS_DIR)/physical_instances.tsv w]
 foreach inst [$block getInsts] {
     incr total_cells
     set master [$inst getMaster]
@@ -37,13 +38,16 @@ foreach inst [$block getInsts] {
     if {[regexp {^(FILLCELL|TAPCELL)} $name]} {continue}
     incr logical_cells
     if {[string match "DFF*" $name]} {incr flop_count}
-    set logical_area [expr {$logical_area + double([$master getWidth]) * [$master getHeight] / $dbu / $dbu}]
+    set inst_area [expr {double([$master getWidth]) * [$master getHeight] / $dbu / $dbu}]
+    set logical_area [expr {$logical_area + $inst_area}]
+    puts $instances "[$inst getName]\t$name\t$inst_area"
     if {[info exists master_counts($name)]} {
         incr master_counts($name)
     } else {
         set master_counts($name) 1
     }
 }
+close $instances
 if {$flop_count != 160} {error "Expected 160 full-PREP data DFFs, found $flop_count"}
 set f [open $::env(REPORTS_DIR)/physical_counts.tsv w]
 puts $f "logical_cells\t$logical_cells"

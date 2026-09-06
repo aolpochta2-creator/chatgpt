@@ -35,6 +35,7 @@ for key in (
     "mapping_mode",
     "mapping_invocation",
     "mapping_network_policy",
+    "common_netlist_naming_policy",
     "mapped_common_module_sha256",
     "common_mapped_verilog_sha256",
     "common_manifest_sha256",
@@ -47,6 +48,7 @@ for key in (
     "common_boundary_ports",
     "mapped_tool_versions_sha256",
     "gate_trace_sha256",
+    "gate_vector_count",
 ):
     assert V36[key] == V43[key], (key, V36[key], V43[key])
 
@@ -82,6 +84,8 @@ assert COMMON["boundary_ports"] == V36["common_boundary_ports"]
 assert COMMON["dff_cells"] == V36["common_dff_cells"] == 0
 assert COMMON["memories"] == 0
 assert COMMON["blackbox_or_oracle"] is False
+assert COMMON["netlist_naming_policy"] == \
+    V36["common_netlist_naming_policy"]
 assert COMMON["mapped_tool_versions_sha256"] == \
     V36["mapped_tool_versions_sha256"]
 assert COMMON["rom_sha256"] == V36["rom_sha256"]
@@ -97,6 +101,7 @@ for key in (
 metric_keys = (
     "logical_cells",
     "logical_area_um2",
+    "dff_cells",
     "max_data_arrival_ns",
     "worst_setup_slack_ns",
     "setup_tns_ns",
@@ -111,6 +116,9 @@ metric_keys = (
     "common_candidate_selector_and_special_logical_area_um2",
     "product_specific_logical_cells",
     "product_specific_logical_area_um2",
+    "variant_yosys_wall_seconds",
+    "variant_yosys_peak_rss_kb",
+    "variant_abc_reported_cpu_seconds",
 )
 rows = []
 deltas = {}
@@ -144,6 +152,7 @@ fairness = {
         COMMON["reimport_cell_name_type_sha256"],
     "liberty_sha256": COMMON["liberty_sha256"],
     "mapped_tool_versions_sha256": COMMON["mapped_tool_versions_sha256"],
+    "netlist_naming_policy": COMMON["netlist_naming_policy"],
     "timing_target_ns": COMMON["clock_period_ns"],
     "abc_delay_ps": COMMON["abc_delay_ps"],
     "common_dff_cells": COMMON["dff_cells"],
@@ -151,6 +160,7 @@ fairness = {
     "residual_memories": COMMON["memories"],
     "production_rtl_lock_sha256": COMMON["production_rtl_lock_sha256"],
     "gate_trace_sha256": V36["gate_trace_sha256"],
+    "gate_vector_count": V36["gate_vector_count"],
     "proof": (
         "one common_mapped job emitted one real standard-cell predictor/ROM "
         "artifact; both variants consumed that byte-identical file after all "
@@ -169,10 +179,27 @@ comparison = {
         "rom_content_bits": V36["rom_content_bits"],
         "mapping_mode": V36["mapping_mode"],
     },
+    "common_mapping": {
+        "logical_cells": COMMON["logical_cells"],
+        "logical_area_um2": COMMON["logical_area_um2"],
+        "dff_cells": COMMON["dff_cells"],
+        "cost_by_region": COMMON["cost_by_region"],
+        "yosys_wall_seconds": COMMON["yosys_wall_seconds"],
+        "yosys_peak_rss_kb": COMMON["yosys_peak_rss_kb"],
+        "abc_reported_cpu_seconds": COMMON["abc_reported_cpu_seconds"],
+    },
+    "critical_paths": {
+        "v36": V36["critical_path"],
+        "v43": V43["critical_path"],
+    },
     "metrics": deltas,
     "caveat": (
         "the frozen predictor boundary prevents cross-boundary Boolean "
         "optimization; all real common gates and timing arcs remain present"
+    ),
+    "runtime_caveat": (
+        "mapping wall time and peak RSS are CI diagnostics, not architecture "
+        "quality metrics"
     ),
 }
 (ROOT / "mapped_comparison.json").write_text(

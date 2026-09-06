@@ -216,7 +216,10 @@ jobs:
       - name: Compile and simulate the composed mapped full-PREP netlist
         env:
           LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
-        run: bash full-prep/run_gate_functional.sh "${{ matrix.variant }}" 32
+        # All nine mandatory directed cases plus eight deterministic random
+        # vectors.  The source-level functional job independently runs 256
+        # random vectors; this expensive gate check validates composition.
+        run: bash full-prep/run_gate_functional.sh "${{ matrix.variant }}" 8
 
       - name: Mapped timing in the pinned physical image
         env:
@@ -327,7 +330,7 @@ jobs:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.stage == 'physical') ||
       (github.event_name == 'push' && contains(github.event.head_commit.message, '[full-prep-physical]'))
-    name: physical (V${{ matrix.variant }}, 15.0 ns, seed 1)
+    name: physical (V${{ matrix.variant }}, 40.0 ns, seed 1)
     needs: [toolchain, functional, mapped, compare_mapped]
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -389,6 +392,7 @@ jobs:
             full-prep-work/tie_materialization.log
             full-prep-work/flow.log
             full-prep-work/physical_summary.json
+            full-prep-out/v${{ matrix.variant }}/full_prep_v44.physical_input.v
             full-prep-work/tooling/**
             full-prep-work/logs/**
             full-prep-work/reports/**

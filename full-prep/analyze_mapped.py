@@ -26,6 +26,11 @@ def sha256_manifest(path: Path) -> dict[str, str]:
     return result
 
 
+def normalized_instance(name: str) -> str:
+    """Normalize Yosys dot paths and OpenSTA slash paths for matching."""
+    return name.replace("/", ".").replace("\\", "").lstrip(".")
+
+
 def stat_value(text: str, label: str) -> int:
     match = re.search(rf"{re.escape(label)}:\s+(\d+)", text)
     if not match:
@@ -270,6 +275,10 @@ def main() -> None:
     premap_stat = (out / "premap.stat.rpt").read_text()
     sta_path = out / "mapped_sta.rpt"
     sta = sta_path.read_text()
+    gate_trace_path = out / "gate-trace.txt"
+    gate_trace_lines = gate_trace_path.read_text().splitlines()
+    assert len(gate_trace_lines) >= 9
+    assert all(line.startswith("GATE_VECTOR ") for line in gate_trace_lines)
 
     mapped_design = json.loads(mapped_json_path.read_text())
     premap_design = json.loads(premap_json_path.read_text())
@@ -323,11 +332,14 @@ def main() -> None:
     path = first_path_details(sta, directions)
     path_instances = path["instances"]
     mapped_cells = mapped["cells"]
+    normalized_mapped_cells = {
+        normalized_instance(name): cell for name, cell in mapped_cells.items()
+    }
+    assert len(normalized_mapped_cells) == len(mapped_cells)
     path_sources = Counter()
     matched_instances = 0
     for instance in path_instances:
-        candidates = (instance, instance.lstrip("\\"))
-        cell = next((mapped_cells[name] for name in candidates if name in mapped_cells), None)
+        cell = normalized_mapped_cells.get(normalized_instance(instance))
         if cell is not None:
             matched_instances += 1
             path_sources[source_file(cell)] += 1
@@ -406,7 +418,8 @@ def main() -> None:
         "rom_sha256": sha256_manifest(out / "rom-sha256.txt"),
         "mapped_tool_versions_sha256": sha256(
             out / "mapped-tool-versions.txt"),
-        "gate_trace_sha256": sha256(out / "gate-trace.txt"),
+        "gate_trace_sha256": sha256(gate_trace_path),
+        "gate_vector_count": len(gate_trace_lines),
         "gate_level_functional_pass": True,
         "mapped_cell_type_counts": dict(sorted(cell_types.items())),
         "mapped_explicit_mux_cells": sum(
@@ -439,6 +452,7 @@ def main() -> None:
             "blackbox; overwrite it with the exact frozen real standard-cell "
             "artifact only after all ABC passes; then flatten without opt/clean"
         ),
+        "common_netlist_naming_policy": common["netlist_naming_policy"],
     })
     summary.update(region_metrics)
     summary.update(time_metrics(out / "variant-yosys-time.txt", out / "yosys.log"))

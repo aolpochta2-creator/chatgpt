@@ -17,6 +17,48 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def normalized_instance(name: str) -> str:
+    """Normalize Yosys dot paths and OpenSTA slash paths for matching."""
+    return name.replace("/", ".").replace("\\", "").lstrip(".")
+
+
+def critical_region(instance: str, cell_type: str) -> str:
+    lowered = normalized_instance(instance).lower()
+    if "u_predictor" in lowered:
+        if "u_roms" in lowered:
+            return "common_rom"
+        return "common_predictor_non_rom"
+    if ("g_v36" in lowered or "g_v43" in lowered) and \
+            ("u_pd" in lowered or "u_px" in lowered):
+        return "product_specific"
+    if "u_prep" in lowered:
+        return "common_candidate_selector_and_special"
+    if cell_type.startswith("DFF"):
+        return "output_register_boundary"
+    if "BUF" in cell_type:
+        return "inserted_or_unattributed_buffer"
+    return "unattributed"
+
+
+def peak_memory(log_root: Path) -> tuple[float | None, str | None]:
+    """Recover the largest tool-reported resident-memory diagnostic."""
+    best: tuple[float, str] | None = None
+    unit_scale = {"KB": 1.0 / 1024.0, "MB": 1.0, "GB": 1024.0}
+    patterns = (
+        re.compile(r"Peak memory:\s*([0-9.]+)\s*(KB|MB|GB)"),
+        re.compile(r"\bpeak\s*=\s*([0-9.]+)\s*\((MB)\)"),
+    )
+    for path in sorted(log_root.rglob("*.log")):
+        with path.open(errors="replace") as stream:
+            for line in stream:
+                for pattern in patterns:
+                    for value, unit in pattern.findall(line):
+                        memory_mb = float(value) * unit_scale[unit]
+                        if best is None or memory_mb > best[0]:
+                            best = (memory_mb, str(path))
+    return best if best is not None else (None, None)
+
+
 root = Path(sys.argv[1])
 top = "full_prep_v44"
 variant = int(os.environ["VARIANT"])
@@ -27,8 +69,12 @@ physical_seed = int(os.environ["PHYSICAL_SEED"])
 drt_or_k = float(os.environ["DRT_OR_K"])
 flow_runtime_seconds = int(os.environ["FLOW_RUNTIME_SECONDS"])
 assert variant in (36, 43)
-assert math.isclose(expected_period, 15.0, abs_tol=1e-12)
+assert math.isclose(expected_period, 40.0, abs_tol=1e-12)
 assert physical_seed == 1 and math.isclose(drt_or_k, 1.0, abs_tol=1e-12)
+assert os.environ["DIE_AREA"] == "0 0 640 640"
+assert os.environ["CORE_AREA"] == "10 10 630 630"
+assert math.isclose(float(os.environ["PLACE_DENSITY"]), 0.45,
+                    abs_tol=1e-12)
 assert re.fullmatch(r"[0-9a-f]{40}", source_commit)
 assert source_run_id > 0 and flow_runtime_seconds > 0
 
@@ -38,10 +84,12 @@ logs = root / "logs" / "nangate45" / top / "base"
 evidence_names = ["6_final.odb", "6_final.def", "6_final.gds",
                   "6_final.v", "6_final.sdc", "6_final.spef"]
 evidence_sizes = {}
+evidence_sha256 = {}
 for name in evidence_names:
     path = results / name
     assert path.is_file() and path.stat().st_size > 0, f"missing evidence: {path}"
     evidence_sizes[name] = path.stat().st_size
+    evidence_sha256[name] = sha256(path)
 
 final_sdc = (results / "6_final.sdc").read_text()
 period_match = re.search(r"create_clock\s+.*?-period\s+([0-9.]+)", final_sdc)
@@ -60,6 +108,23 @@ counts = {
 }
 cell_types = dict(line.split("\t") for line in
                   (reports / "physical_cell_types.tsv").read_text().splitlines())
+physical_region_counts: Counter[str] = Counter()
+physical_region_areas: Counter[str] = Counter()
+for line in (reports / "physical_instances.tsv").read_text().splitlines():
+    instance, cell_type, area = line.split("\t")
+    region = critical_region(instance, cell_type)
+    physical_region_counts[region] += 1
+    physical_region_areas[region] += float(area)
+assert sum(physical_region_counts.values()) == counts["logical_cells"]
+assert math.isclose(sum(physical_region_areas.values()),
+                    counts["logical_cell_area_um2"], abs_tol=0.01)
+physical_cost_by_region = {
+    region: {
+        "logical_cells": physical_region_counts[region],
+        "logical_cell_area_um2": physical_region_areas[region],
+    }
+    for region in sorted(physical_region_counts)
+}
 
 slack_report = (reports / "physical_slack.rpt").read_text()
 timing = {}
@@ -82,13 +147,30 @@ next_path = setup.find("\nStartpoint:", 1)
 critical_path = setup if next_path < 0 else setup[:next_path]
 critical_data_path = critical_path.split("data arrival time", 1)[0]
 critical_cells = []
-seen_instances = set()
-for instance, cell_type in re.findall(
-        r"[\^v]\s+(\S+)/\S+\s+\(([A-Z][A-Z0-9_]*_X\d+)\)",
-        critical_data_path):
-    if instance not in seen_instances:
-        critical_cells.append((instance, cell_type))
-        seen_instances.add(instance)
+critical_region_counts: Counter[str] = Counter()
+critical_delay_by_region: Counter[str] = Counter()
+critical_region_sequence = []
+cell_row = re.compile(
+    r"[\^v]\s+(\S+)/(\S+)\s+\(([A-Z][A-Z0-9_]*_X\d+)\)\s*$")
+for line in critical_data_path.splitlines():
+    match = cell_row.search(line)
+    if not match:
+        continue
+    numbers = re.findall(
+        r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?",
+        line[:match.start()])
+    # Cell output rows have fanout, capacitance, slew, delay and arrival.
+    # Input-pin rows omit fanout/capacitance and are not counted twice.
+    if len(numbers) < 5:
+        continue
+    instance, _, cell_type = match.groups()
+    incremental_delay = float(numbers[-2])
+    region = critical_region(instance, cell_type)
+    critical_cells.append((instance, cell_type))
+    critical_region_counts[region] += 1
+    critical_delay_by_region[region] += incremental_delay
+    if not critical_region_sequence or critical_region_sequence[-1] != region:
+        critical_region_sequence.append(region)
 critical_cell_types = [cell_type for _, cell_type in critical_cells]
 critical_fanouts = [int(value) for value in re.findall(
     r"^\s+(\d+)\s+-?\d+\.\d+\s+", critical_data_path, re.MULTILINE)]
@@ -100,10 +182,14 @@ assert arrivals
 mapped_json = json.loads(Path(
     f"full-prep-out/v{variant}/full_prep_v44.mapped.json").read_text())
 mapped_cells = mapped_json["modules"][top]["cells"]
+normalized_mapped_cells = {
+    normalized_instance(name): cell for name, cell in mapped_cells.items()
+}
+assert len(normalized_mapped_cells) == len(mapped_cells)
 path_source_files = Counter()
 matched_path_instances = 0
 for instance, _ in critical_cells:
-    cell = mapped_cells.get(instance) or mapped_cells.get(instance.lstrip("\\"))
+    cell = normalized_mapped_cells.get(normalized_instance(instance))
     if cell is None:
         continue
     matched_path_instances += 1
@@ -162,15 +248,39 @@ grt_setup_buffers = sum(map(int, re.findall(
 grt_hold_buffers = sum(map(int, re.findall(r"Inserted (\d+) hold buffers\.", grt)))
 grt_design_buffers = sum(map(int, re.findall(
     r"Inserted (\d+) buffers in \d+ nets\.", grt)))
+flow_peak_memory_mb, flow_peak_memory_log = peak_memory(logs)
+assert flow_peak_memory_mb is not None and flow_peak_memory_log is not None
 
 mapped_metrics_path = Path(f"full-prep-out/v{variant}/mapped_metrics.json")
 mapped_metrics = json.loads(mapped_metrics_path.read_text())
+mapped_netlist_path = Path(f"full-prep-out/v{variant}/full_prep_v44.mapped.v")
+physical_input_path = Path(os.environ["FULL_PREP_PHYSICAL_NETLIST"])
+common_netlist_path = Path(os.environ["FULL_PREP_COMMON_NETLIST"])
+variant_netlist_path = Path(os.environ["FULL_PREP_VARIANT_NETLIST"])
+assert math.isclose(mapped_metrics["clock_period_ns"], expected_period,
+                    abs_tol=1e-12)
+assert sha256(mapped_netlist_path) == mapped_metrics["mapped_netlist_sha256"]
+assert sha256(common_netlist_path) == \
+    mapped_metrics["common_mapped_verilog_sha256"]
+assert sha256(variant_netlist_path) == \
+    mapped_metrics["variant_only_mapped_verilog_sha256"]
+platform_manifest_path = root / "tooling" / "nangate45-platform-files.sha256"
+toolchain_text = (root / "toolchain.txt").read_text()
+openroad_version = toolchain_text.splitlines()[0]
 summary = {
     "experiment": "V44 full-PREP integration/ranking",
     "variant": variant,
     "top": top,
     "source_commit": source_commit,
     "source_run_id": source_run_id,
+    "orfs_image": os.environ["ORFS_IMAGE"],
+    "orfs_platform_commit":
+        "0c914a7471340da86058dfe4d25d537f0282a508",
+    "openroad_image_source_commit":
+        "84e3ff1eb2c36302cef42e4f70a69efe4cfbb126",
+    "openroad_version": openroad_version,
+    "nangate45_platform_files_manifest_sha256":
+        sha256(platform_manifest_path),
     "clock_period_ns": actual_period,
     "physical_seed": physical_seed,
     "drt_or_k": drt_or_k,
@@ -185,11 +295,21 @@ summary = {
     "max_data_arrival_ns": max(arrivals),
     "critical_startpoint": critical_startpoint,
     "critical_endpoint": critical_endpoint,
-    "critical_path_logic_cell_count": len(critical_cell_types),
+    "critical_path_logic_cell_count": sum(
+        "BUF" not in cell for cell in critical_cell_types),
     "critical_path_buffer_count": sum(
-        cell.startswith("BUF_") for cell in critical_cell_types),
+        "BUF" in cell for cell in critical_cell_types),
     "critical_path_max_fanout": max(critical_fanouts, default=0),
     "critical_path_cell_types": critical_cell_types,
+    "critical_path_region_cell_counts": dict(sorted(critical_region_counts.items())),
+    "critical_path_incremental_cell_delay_by_region_ns": {
+        key: value for key, value in sorted(critical_delay_by_region.items())
+    },
+    "critical_path_region_sequence": critical_region_sequence,
+    "critical_path_dominant_region_by_incremental_cell_delay": (
+        max(critical_delay_by_region, key=critical_delay_by_region.get)
+        if critical_delay_by_region else None
+    ),
     "critical_path_instances_matched_to_mapped_json": matched_path_instances,
     "critical_path_source_file_counts": dict(sorted(path_source_files.items())),
     **electrical_counts,
@@ -202,16 +322,27 @@ summary = {
     "grt_setup_buffers": grt_setup_buffers,
     "grt_hold_buffers": grt_hold_buffers,
     "grt_repair_design_buffers": grt_design_buffers,
+    "flow_peak_memory_mb": flow_peak_memory_mb,
+    "flow_peak_memory_log": flow_peak_memory_log,
     "routed_wire_length_um": int(wire[-1]),
     "vias": int(vias[-1]),
     "detailed_route_drc_violations": drc_violations,
     "antenna_net_violations": int(antenna_nets[-1]),
     "antenna_pin_violations": int(antenna_pins[-1]),
     "final_evidence_bytes": evidence_sizes,
+    "final_evidence_sha256": evidence_sha256,
     "final_cell_type_counts": {key: int(value) for key, value in cell_types.items()},
+    "final_physical_cost_by_region": physical_cost_by_region,
     "mapped_metrics_sha256": sha256(mapped_metrics_path),
-    "mapped_netlist_sha256": sha256(Path(
-        f"full-prep-out/v{variant}/full_prep_v44.mapped.v")),
+    "mapped_netlist_sha256": sha256(mapped_netlist_path),
+    "physical_input_netlist_sha256": sha256(physical_input_path),
+    "common_mapped_netlist_sha256": sha256(common_netlist_path),
+    "variant_mapped_netlist_sha256": sha256(variant_netlist_path),
+    "common_manifest_sha256": mapped_metrics["common_manifest_sha256"],
+    "common_flat_cell_name_type_sha256":
+        mapped_metrics["common_flat_cell_name_type_sha256"],
+    "production_rtl_lock_sha256":
+        mapped_metrics["common_production_rtl_lock_sha256"],
     "liberty_sha256": mapped_metrics["liberty_sha256"],
     "wrapper_sha256": mapped_metrics["wrapper_sha256"],
     "rom_representation": mapped_metrics["rom_representation"],

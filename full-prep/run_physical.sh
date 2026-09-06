@@ -18,9 +18,12 @@ if [[ "$FLOORPLAN_STATUS" != frozen || -z "$DIE_AREA" || -z "$CORE_AREA" ]]; the
     echo "canonical physical launch requires a frozen common floorplan" >&2
     exit 1
 fi
-[[ "$CLOCK_PERIOD" == 15.0 ]]
+[[ "$CLOCK_PERIOD" == 40.0 ]]
 [[ "$PHYSICAL_SEED" == 1 ]]
 [[ "$DRT_OR_K" == 1.0 ]]
+[[ "$PLACE_DENSITY" == 0.45 ]]
+[[ "$DIE_AREA" == "0 0 640 640" ]]
+[[ "$CORE_AREA" == "10 10 630 630" ]]
 
 source /OpenROAD-flow-scripts/env.sh
 export LIBERTY=/work/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
@@ -70,7 +73,11 @@ find platforms/nangate45 -type f -print0 | LC_ALL=C sort -z \
     printf 'CLOCK_PERIOD_NS=%s\n' "$CLOCK_PERIOD"
     printf 'VARIANT=%s\n' "$VARIANT"
     printf 'PHYSICAL_SEED=%s\n' "$PHYSICAL_SEED"
+    printf 'GPL_RANDOM_SEED=%s\n' "$PHYSICAL_SEED"
+    printf 'GRT_SEED=%s\n' "$PHYSICAL_SEED"
+    printf 'DRT_OR_SEED=%s\n' "$PHYSICAL_SEED"
     printf 'DRT_OR_K=%s\n' "$DRT_OR_K"
+    printf '%s\n' 'DRT_RANDOM_ORDER_POLICY=floor(OR_K * rerouteNets.size()) seeded adjacent swaps at maze iteration zero; OR_K=1.0 adds one linear-size swap pass, not extra DRT iterations'
     printf 'DIE_AREA=%s\n' "$DIE_AREA"
     printf 'CORE_AREA=%s\n' "$CORE_AREA"
     printf 'PLACE_DENSITY=%s\n' "$PLACE_DENSITY"
@@ -87,7 +94,8 @@ find platforms/nangate45 -type f -print0 | LC_ALL=C sort -z \
         platforms/nangate45/lef/NangateOpenCellLibrary.macro.mod.lef
     sha256sum build/coeff_rom.mem build/square_a.mem build/square_b.mem build/cube.mem
     sha256sum full-prep/full_prep_top.sv full-prep/contract.env full-prep/config.mk \
-        full-prep/constraints.sdc
+        full-prep/constraints.sdc full-prep/report.tcl \
+        full-prep/validate_physical.py
 } > full-prep-work/toolchain.txt
 
 python3 - <<'PY'
@@ -100,9 +108,12 @@ liberty = Path(os.environ['LIBERTY']).read_text()
 assert re.search(r'time_unit\s*:\s*"1ns"', liberty)
 assert re.search(r'capacitive_load_unit\s*\(\s*1\s*,\s*ff\s*\)', liberty)
 period = float(os.environ['CLOCK_PERIOD'])
-assert math.isclose(period, 15.0, abs_tol=1e-12)
+assert math.isclose(period, 40.0, abs_tol=1e-12)
 assert int(os.environ['PHYSICAL_SEED']) == 1
 assert math.isclose(float(os.environ['DRT_OR_K']), 1.0, abs_tol=1e-12)
+assert math.isclose(float(os.environ['PLACE_DENSITY']), 0.45, abs_tol=1e-12)
+assert os.environ['DIE_AREA'] == '0 0 640 640'
+assert os.environ['CORE_AREA'] == '10 10 630 630'
 print('verified full-PREP Liberty units, period, seed and effective DRT K')
 PY
 
@@ -122,7 +133,10 @@ fi
     hierarchy -check -top full_prep_v44;
     flatten;
     hilomap -hicell LOGIC1_X1 Z -locell LOGIC0_X1 Z;
-    write_verilog -noattr -noexpr $FULL_PREP_PHYSICAL_NETLIST;
+    # Keep the already-mapped hierarchy-derived instance names.  This does
+    # not preserve synthesis hierarchy, but it lets final STA distinguish the
+    # ROM, predictor, product and candidate/selector regions.
+    write_verilog -noattr -noexpr -norename $FULL_PREP_PHYSICAL_NETLIST;
 " > full-prep-work/tie_materialization.log
 test -s "$FULL_PREP_PHYSICAL_NETLIST"
 

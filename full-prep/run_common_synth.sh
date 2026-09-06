@@ -38,6 +38,7 @@ sha256sum --check full-prep/common-source-sha256.txt
     printf '%s\n' "MAPPING_INVOCATION=abc -liberty <pinned Nangate45 Liberty> -D $ABC_DELAY_PS"
     printf '%s\n' 'ROM_POLICY=real generated ROM logic mapped once to standard cells; no blackbox, macro, oracle, or area-free source'
     printf '%s\n' 'FREEZE_POLICY=emit once; consume exact artifact; no later ABC/opt/clean across the common block'
+    printf '%s\n' 'NAMING_POLICY=preserve post-map cell names so ROM/predictor path attribution survives composition'
 } > "$out/common-mapping-contract.txt"
 
 /usr/bin/time -v -o "$out/common-yosys-time.txt" \
@@ -55,7 +56,10 @@ yosys -Q -l "$out/yosys.log" -p "
     flatten;
     clean -purge;
     tee -o $out/common_predictor.stat.rpt stat -liberty $LIBERTY;
-    write_verilog -noattr -noexpr -nodec $out/common_predictor.mapped.v;
+    # Preserve the mapped cell names so the ROM sub-cone remains attributable
+    # in mapped and physical critical paths.  This changes names only, not the
+    # frozen standard-cell topology.
+    write_verilog -noattr -noexpr -nodec -norename $out/common_predictor.mapped.v;
     write_json $out/common_predictor.mapped.json;
 "
 
