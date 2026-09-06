@@ -142,8 +142,13 @@ def common_flat_cell_identity(module: dict) -> tuple[int, str]:
     """Fingerprint the frozen common gates after hierarchy-only flattening."""
     cells = []
     for name, cell in module.get("cells", {}).items():
-        marker = "\\u_predictor."
-        if marker not in name:
+        # JSON backend emits ordinary hierarchical names as
+        # ``u_prep.u_predictor.<cell>``.  Keep the escaped spelling too for
+        # compatibility with identifiers that require Verilog escaping.
+        marker = next((candidate for candidate in
+                       ("u_predictor.", "\\u_predictor.")
+                       if candidate in name), None)
+        if marker is None:
             continue
         relative_name = name.split(marker, 1)[1]
         cells.append((relative_name, cell["type"]))
