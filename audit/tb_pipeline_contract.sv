@@ -78,11 +78,12 @@ module tb_pipeline_contract;
         input [63:0] This_D;
         input integer Expected_Prep_Correction;
         input integer Expected_Final_Correction;
-        input integer Expected_M;
+        input integer Expected_M_Encoding;
         input integer This_Tag;
         reg This_Error;
         reg [127:0] Wide_Numerator;
         reg [127:0] Wide_Quotient;
+        integer Expected_Bucket_Encoding;
         begin
             @(negedge Clk);
             In_Valid = This_Valid;
@@ -97,11 +98,16 @@ module tb_pipeline_contract;
                     u_v43.u_core.u_prep.Correction !== Expected_Prep_Correction)
                     fail("compiled PREP correction mismatch");
             end
-            if (Expected_M >= 0) begin
-                if (u_v36.u_core.u_prep.u_predictor.M !== Expected_M ||
-                    u_v39.u_core.u_prep.u_predictor.M !== Expected_M ||
-                    u_v43.u_core.u_prep.u_predictor.M !== Expected_M)
-                    fail("compiled predictor M bucket-edge mismatch");
+            if (Expected_M_Encoding >= 0) begin
+                Expected_Bucket_Encoding = (Expected_M_Encoding - 1025) & 2047;
+                if (u_v36.u_core.u_prep.u_predictor.M !== Expected_M_Encoding ||
+                    u_v39.u_core.u_prep.u_predictor.M !== Expected_M_Encoding ||
+                    u_v43.u_core.u_prep.u_predictor.M !== Expected_M_Encoding)
+                    fail("compiled predictor 11-bit M encoding mismatch");
+                if (u_v36.u_core.u_prep.u_predictor.Bucket !== Expected_Bucket_Encoding ||
+                    u_v39.u_core.u_prep.u_predictor.Bucket !== Expected_Bucket_Encoding ||
+                    u_v43.u_core.u_prep.u_predictor.Bucket !== Expected_Bucket_Encoding)
+                    fail("compiled predictor 11-bit Bucket encoding mismatch");
             end
 
             @(posedge Clk);
@@ -182,10 +188,13 @@ module tb_pipeline_contract;
         run_cycle(1, 64'h8000000000000000, 64'h8000000000000001, 3, -1, -1, 13);
         run_cycle(1, 64'h8020000000000000, 64'h8020000000000001, 4, -1, -1, 14);
 
-        // Final predictor bucket edge into m=2048 and the maximum divisor.
+        // Final predictor bucket edge into mathematical m=2048 and the maximum
+        // divisor. Production M is 11 bits: m=2048 is intentionally encoded as
+        // 0, making Bucket=1023 and Bucket_Top=0 (the modulo-2^64 encoding of
+        // 2^64). The exact end-to-end checks below validate that wrap contract.
         run_cycle(1, 64'hffdfffffffffffff, 64'hffe0000000000000, 1, -1, 2047, 20);
-        run_cycle(1, 64'hffe0000000000000, 64'hffe0000000000001, 1, -1, 2048, 21);
-        run_cycle(1, 64'hfffffffffffffffe, 64'hffffffffffffffff, 1, -1, 2048, 22);
+        run_cycle(1, 64'hffe0000000000000, 64'hffe0000000000001, 1, -1, 0, 21);
+        run_cycle(1, 64'hfffffffffffffffe, 64'hffffffffffffffff, 1, -1, 0, 22);
 
         // Required current-FINAL correction=3 witness.
         run_cycle(1, 64'he4a3acb2922b34f4, 64'heb5fe00000000001, 1, 3, -1, 30);
@@ -198,7 +207,7 @@ module tb_pipeline_contract;
         // avoids the false assumption Out_Valid=0 -> Out_Error=0.
         run_cycle(0, 64'd0, 64'h7fffffffffffffff, -1, -1, -1, 50);
         run_cycle(1, 64'd0, 64'h7fffffffffffffff, -1, -1, -1, 51); // invalid D
-        run_cycle(1, 64'd0, 64'hffffffffffffffff, 1, -1, 2048, 52); // legal
+        run_cycle(1, 64'd0, 64'hffffffffffffffff, 1, -1, 0, 52); // legal
         run_cycle(1, 64'h8000000000000001, 64'h8000000000000001, -1, -1, -1, 53); // X>=D
         run_cycle(1, 64'h123456789abcdef0, 64'hf123456789abcdef, -1, -1, -1, 54); // legal C
         run_cycle(0, 64'd0, 64'h8000000000000000, -1, -1, -1, 55);
