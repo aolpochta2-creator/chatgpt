@@ -119,13 +119,13 @@ module tb_expression_sizing;
         require(Candidate_M[0] === -4'sd1,
                 "k=0 Carry_Low=0 encodes signed -1");
         for (Index = 1; Index < 5; Index = Index + 1)
-            require(Candidate_M[Index] === Index - 1,
+            require(Candidate_M[Index] === ($signed(Index[3:0]) - 4'sd1),
                     "Carry_Low=0 candidate encoding");
 
         Carry_Low = 1'b1;
         #1;
         for (Index = 0; Index < 5; Index = Index + 1)
-            require(Candidate_M[Index] === Index,
+            require(Candidate_M[Index] === $signed(Index[3:0]),
                     "Carry_Low=1 candidate encoding");
 
         // Keep these checks scalar-by-signal. Icarus 12.0 reports a false

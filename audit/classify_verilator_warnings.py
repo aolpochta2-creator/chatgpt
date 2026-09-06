@@ -12,6 +12,7 @@ from pathlib import Path
 STYLE_CODES = {
     "DECLFILENAME",
     "EOFNEWLINE",
+    "GENUNNAMED",
     "UNUSEDSIGNAL",
     "UNUSEDPARAM",
     "UNUSEDGENVAR",
@@ -21,12 +22,17 @@ STYLE_CODES = {
 # Width sites accepted only when another gate checks the exact semantic intent.
 # The ranges are intentionally narrow; a new warning elsewhere is unresolved.
 AUDITED_WIDTH_SITES = (
+    ("rtl/hz_predictor_csa.sv", range(11, 12), "intentional 11-bit modulo M encoding; m=2048 is M=0 and is exercised at both bucket edges"),
+    ("rtl/hz_predictor_csa.sv", range(15, 16), "intentional zero-extension to the 65-bit Bucket_Top container; bit 64 is unused"),
+    ("rtl/hz_predictor_csa.sv", range(16, 17), "intentional low-53-bit E extraction; legal-domain boundary and full-top tests check the range contract"),
     ("rtl/hz_predictor_csa.sv", range(66, 74), "intentional signed-64 polynomial arithmetic; model + elaborated wires"),
     ("rtl/hz_predictor_csa.sv", range(81, 86), "signed product widths checked from Yosys cells"),
     ("rtl/hz_prep.sv", range(110, 111), "signed4 generate constant checked for both Carry_Low values"),
+    ("rtl/hz_prep.sv", range(149, 150), "power-boundary NX keeps low 96 bits of X<<33; legal X<2^63 makes discarded bit 96 zero and both endpoint cases are directed tests"),
     ("rtl/hz_final.sv", range(15, 16), "33x33->66 checked by microtest and Yosys"),
     ("rtl/hz_final.sv", range(18, 23), "FINAL product widths checked by microtest and Yosys"),
     ("rtl/hz_final.sv", range(39, 40), "64-bit quotient adder checked by Yosys"),
+    ("rtl/hz_product_v36.sv", range(31, 32), "signed Wrap is intentionally sign-extended to the 10-bit Top_Coeff subtraction context"),
     ("rtl/hz_product_v36.sv", range(33, 35), "parameter-width modular product/shift checked structurally"),
     ("rtl/hz_product_v39.sv", range(25, 30), "signed W-bit shift/unary-minus semantics checked by microtest"),
     ("rtl/hz_product_v39.sv", range(44, 46), "parameter-width modular product/shift checked structurally"),
@@ -101,7 +107,11 @@ def main() -> None:
     unique: dict[tuple[str, str, str, int, str], Finding] = {}
     for log in args.logs:
         for finding in findings(log):
-            key = (finding.level, finding.code, finding.path, finding.line, finding.text)
+            # The same source diagnostic appears once per audited top.  Instance
+            # context is carried on continuation lines, so deduplicate by the
+            # diagnostic header while retaining every distinct source site.
+            header = finding.text.splitlines()[0]
+            key = (finding.level, finding.code, finding.path, finding.line, header)
             unique[key] = finding
 
     rows: list[tuple[Finding, str, str]] = []
