@@ -1,0 +1,45 @@
+name: V44 full-PREP integration
+
+on:
+  push:
+    paths:
+      - 'full-prep/**'
+      - '.github/workflows/full-prep.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v44-full-prep-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  functional:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned Icarus
+        run: |
+          sudo apt-get update
+          iverilog_package=12.0-2build2
+          sudo apt-get install -y --no-install-recommends \
+            "iverilog=$iverilog_package"
+          mkdir -p full-prep-out
+          printf 'iverilog_package=%s\n' "$iverilog_package" \
+            | tee full-prep-out/functional-tool-version.txt
+          iverilog -V 2>&1 | tee -a full-prep-out/functional-tool-version.txt
+
+      - name: Compile and simulate the registered full-PREP boundary
+        run: bash full-prep/run_functional.sh 256
+
+      - name: Upload full-PREP functional evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-prep-functional-evidence
+          path: full-prep-out/**
+          if-no-files-found: error
+          retention-days: 30
