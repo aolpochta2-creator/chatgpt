@@ -1,7 +1,8 @@
 # V44 full-PREP physical boundary manifest
 
-Status: preregistered experiment contract, before wrapper implementation and
-before the canonical physical run.
+Status: boundary implemented and functionally validated; amended after the
+same-run mapped fairness gate in run `34023879768`; canonical physical run has
+not yet started.
 
 Production baseline: V44 PREP5 at
 `e16f27ff14098a946fc354929cb6057af1ff0189`.  The production files under
@@ -145,18 +146,50 @@ that netlist substantially, but neither its absolute PPA nor its relative
 ranking is assumed equivalent to a normal delay-oriented mapping.  The run is
 retained as mapping-feasibility evidence only.
 
-The next preflight instead preserves the production RTL module boundaries
+The quality preflight instead preserved the production RTL module boundaries
 through one standard, non-fast `abc -liberty ... -D 15000` command.  Yosys 0.33
 applies that command independently to every selected process-free module; the
 design is flattened only after all modules have been mapped.  Consequently the
 real generated ROM module, common predictor, product/reducer modules and PREP
 local logic are optimized as finite standard-cell networks rather than one
-127k-cell or 90k-cell ABC network.  The V36 and V43 jobs use the same module
-boundaries, command and Liberty.  Exact mapped hashes for the common ROM and
-predictor modules must match across the pair.
+127k-cell or 90k-cell ABC network.
 
-This factorization is structurally honest but is also an explicit methodology
-limitation: ABC cannot optimize across an RTL module boundary, so absolute QoR
+Run `34023879768` proved this representation tractable with default ABC, but
+also rejected the original fairness assumption.  Both mapping jobs completed,
+yet their independently mapped common modules were not byte-identical:
+
+| evidence | V36 context | V43 context |
+|---|---:|---:|
+| pre-ABC `hz_predictor_csa` generic cells | 43,286 | 43,873 |
+| pre-ABC `hz_predictor_roms` generic cells | 2,321 | 2,321 |
+| mapped predictor cells | 37,362 | 37,852 |
+| mapped ROM cells | 2,397 | 2,386 |
+
+The V36/V43 top-level synthesis contexts contained different active product
+hierarchies and different global optimization/module-order histories.  Thus
+nominally identical source modules were lowered and mapped independently; the
+predictor already differed before ABC, while the two equal-sized ROM ABC input
+networks were still free to receive different heuristic mappings.  It is not
+necessary to attribute this to one undocumented ABC heuristic.  The proven
+methodological defect is that two separate top-level runs were allowed to
+optimize the common block independently.  `compare_mapped` therefore failed
+and both physical jobs were correctly skipped.  This is not an RTL,
+arithmetic, ROM-correctness, or synthesis-completion failure.  The diagnostic
+whole-boundary numbers from that run are not canonical A/B evidence.
+
+The corrected policy maps `hz_predictor_csa` exactly once in one dedicated
+job.  That frozen boundary contains the bucket logic, generated ROM logic,
+polynomial, signed predictor CSA, `Pred_S`, `Pred_C`, `Pred_Wrap`, low-part
+addition/`Carry_Low`, and power-boundary detection.  Variant jobs see only its
+exact port declaration during their default-ABC passes.  After all variant
+mapping has finished, the stub is overwritten by the same emitted mapped
+Verilog artifact.  Composition then permits only hierarchy flattening and
+format emission: no `synth`, `techmap`, `opt`, `clean`, or ABC pass may touch
+the imported common gates.  The common artifact, re-imported module, and
+post-flatten common cell name/type set are all hashed before physical launch.
+
+This corrected factorization is structurally honest but is also an explicit
+methodology limitation: ABC cannot optimize across an RTL module boundary, so absolute QoR
 may be more conservative than a tractable fully optimized flat commercial
 flow.  It does, however, preserve every real gate and inter-module timing path,
 and it exposes the common ROM/predictor cost directly.  If standard
@@ -165,12 +198,14 @@ mapping decision; it does not silently fall back to `abc -fast`.
 
 ## Single timing point
 
-The mapping preflight uses **15.0 ns** as its one common delay constraint.  It
-is not a grid point inferred from historical 10 ns slack, PREP6 Tmin or a
-selected seed.  The physical launch remains blocked until the quality-oriented
-hierarchical result confirms that 15 ns is genuinely conservative and until
-one common floorplan is frozen from its mapped capacity.  A diagnostic mapping
-result is not allowed to force a looser canonical physical contract.
+The mapping/fairness preflight uses **15.0 ns** as its common delay constraint.
+It is not a grid point inferred from historical 10 ns slack, PREP6 Tmin or a
+selected seed.  Run `34023879768` produced mapped arrivals near 28.7--28.8 ns,
+so 15 ns is not a conservative physical integration target.  The physical
+launch remains blocked until the corrected frozen-common mapped comparison
+passes and one conservative common period and floorplan are frozen from that
+same-run mapped evidence.  The period will be chosen once, before physical
+results, and used for both variants; it is not a Tmin search.
 
 There will be no automatic second period.  If this point proves unsuitable,
 the run remains canonical diagnostic evidence and the reason is documented
@@ -185,7 +220,7 @@ The two canonical jobs will use the same:
 - pinned ORFS source/platform commit
   `0c914a7471340da86058dfe4d25d537f0282a508`;
 - pinned official image recorded by `physical/image.txt`;
-- clock period 15.0 ns;
+- one conservative clock period frozen before launch and shared by both jobs;
 - input transition 0.05 ns, output load 5 fF, max transition 0.20 ns and
   max fanout 20;
 - zero external I/O delay and reset false path;
@@ -245,10 +280,16 @@ Before physical launch:
    `D=9232379236109516801` and `D=9340465626629537792`;
 5. check selected `r` and `NX` against exact integer arithmetic;
 6. check V36/V43 registered outputs for equivalence on legal vectors;
-7. map both variants with the identical hierarchy-bounded default-ABC flow;
+7. map the common predictor/ROM once, then map both variant sides with the
+   identical hierarchy-bounded default-ABC flow;
 8. verify 160 mapped data flops, no residual memories and complete mapped
    reports;
-9. freeze one common floorplan after the mapped capacity check.
+9. prove that common source/ROM/Liberty/tool/target hashes match, the exact
+   common mapped artifact was consumed twice, and its post-flatten gate
+   fingerprint is identical;
+10. compile/simulate each composed mapped netlist and compare identical vector
+    traces;
+11. freeze one common period and floorplan after the mapped capacity check.
 
 ## Result statuses and strict pass
 

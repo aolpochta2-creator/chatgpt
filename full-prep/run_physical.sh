@@ -26,7 +26,8 @@ source /OpenROAD-flow-scripts/env.sh
 export LIBERTY=/work/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
 export OPENROAD_EXE=/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad
 export YOSYS_EXE=/OpenROAD-flow-scripts/tools/install/yosys/bin/yosys
-export FULL_PREP_MAPPED_NETLIST=/work/full-prep-out/v${VARIANT}/full_prep_v44.mapped.v
+export FULL_PREP_COMMON_NETLIST=/work/full-prep-common-out/common_predictor.mapped.v
+export FULL_PREP_VARIANT_NETLIST=/work/full-prep-out/v${VARIANT}/variant_only.mapped.v
 export FULL_PREP_PHYSICAL_NETLIST=/work/full-prep-out/v${VARIANT}/full_prep_v44.physical_input.v
 export FULL_PREP_DIE_AREA="$DIE_AREA"
 export FULL_PREP_CORE_AREA="$CORE_AREA"
@@ -35,7 +36,9 @@ export CLOCK_PERIOD PHYSICAL_SEED DRT_OR_K PLACE_DENSITY
 export VARIANT SOURCE_COMMIT SOURCE_RUN_ID ORFS_IMAGE
 
 for required in \
-    "$FULL_PREP_MAPPED_NETLIST" \
+    "$FULL_PREP_COMMON_NETLIST" \
+    "$FULL_PREP_VARIANT_NETLIST" \
+    full-prep-common-out/common_manifest.json \
     "full-prep-out/v${VARIANT}/mapped_metrics.json" \
     build/coeff_rom.mem build/square_a.mem build/square_b.mem build/cube.mem; do
     test -s "$required"
@@ -78,7 +81,8 @@ find platforms/nangate45 -type f -print0 | LC_ALL=C sort -z \
     sha256sum full-prep-work/tooling/detail_route.tcl
     sha256sum full-prep-work/tooling/nangate45-platform-files.sha256
     sha256sum full-prep-toolchain/source-lock.txt
-    sha256sum "$LIBERTY" "$FULL_PREP_MAPPED_NETLIST"
+    sha256sum "$LIBERTY" "$FULL_PREP_COMMON_NETLIST" \
+        "$FULL_PREP_VARIANT_NETLIST" full-prep-common-out/common_manifest.json
     sha256sum platforms/nangate45/lef/NangateOpenCellLibrary.tech.lef \
         platforms/nangate45/lef/NangateOpenCellLibrary.macro.mod.lef
     sha256sum build/coeff_rom.mem build/square_a.mem build/square_b.mem build/cube.mem
@@ -113,8 +117,10 @@ fi
 # resynthesized or remapped before physical implementation.
 "$YOSYS_EXE" -Q -p "
     read_liberty -lib $LIBERTY;
-    read_verilog $FULL_PREP_MAPPED_NETLIST;
+    read_verilog $FULL_PREP_COMMON_NETLIST;
+    read_verilog $FULL_PREP_VARIANT_NETLIST;
     hierarchy -check -top full_prep_v44;
+    flatten;
     hilomap -hicell LOGIC1_X1 Z -locell LOGIC0_X1 Z;
     write_verilog -noattr -noexpr $FULL_PREP_PHYSICAL_NETLIST;
 " > full-prep-work/tie_materialization.log

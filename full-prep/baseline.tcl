@@ -1,7 +1,8 @@
 read_lef /work/platforms/nangate45/lef/NangateOpenCellLibrary.tech.lef
 read_lef /work/platforms/nangate45/lef/NangateOpenCellLibrary.macro.mod.lef
 read_liberty $::env(LIBERTY)
-read_verilog $::env(FULL_PREP_MAPPED_NETLIST)
+read_verilog $::env(FULL_PREP_COMMON_NETLIST)
+read_verilog $::env(FULL_PREP_VARIANT_NETLIST)
 link_design full_prep_v44
 source /work/full-prep/constraints.sdc
 report_units

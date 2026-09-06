@@ -112,9 +112,56 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  common_mapped:
+    name: mapped (single frozen common predictor/ROM)
+    needs: functional
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the pinned mapped-source Yosys package
+        run: |
+          sudo apt-get update
+          yosys_package=0.33-5build2
+          sudo apt-get install -y --no-install-recommends "yosys=$yosys_package"
+          mkdir -p full-prep-common-out
+          {
+            printf 'yosys_package=%s\n' "$yosys_package"
+            yosys -V
+            yosys-abc -v 2>&1 || true
+          } | tee full-prep-common-out/mapped-tool-versions.txt
+
+      - name: Fetch pinned Nangate45 Liberty
+        run: |
+          mkdir -p build/lib
+          curl --fail --location --retry 3 \
+            https://raw.githubusercontent.com/The-OpenROAD-Project/OpenROAD-flow-scripts/0c914a7471340da86058dfe4d25d537f0282a508/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib \
+            --output build/lib/NangateOpenCellLibrary_typical.lib
+          test "$(sha256sum build/lib/NangateOpenCellLibrary_typical.lib | cut -d' ' -f1)" = \
+            8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1
+
+      - name: Map the real common predictor and generated ROMs exactly once
+        env:
+          LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
+        run: |
+          set -a
+          source full-prep/contract.env
+          set +a
+          bash full-prep/run_common_synth.sh
+
+      - name: Upload the canonical frozen common mapped block
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-prep-common-mapped
+          path: full-prep-common-out/**
+          if-no-files-found: error
+          retention-days: 30
+
   mapped:
     name: mapped (V${{ matrix.variant }})
-    needs: [toolchain, functional]
+    needs: [toolchain, functional, common_mapped]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
@@ -128,13 +175,25 @@ jobs:
         run: |
           sudo apt-get update
           yosys_package=0.33-5build2
-          sudo apt-get install -y --no-install-recommends "yosys=$yosys_package"
+          iverilog_package=12.0-2build2
+          sudo apt-get install -y --no-install-recommends \
+            "yosys=$yosys_package" "iverilog=$iverilog_package"
           mkdir -p "full-prep-out/v${{ matrix.variant }}"
           {
             printf 'yosys_package=%s\n' "$yosys_package"
             yosys -V
             yosys-abc -v 2>&1 || true
           } | tee "full-prep-out/v${{ matrix.variant }}/mapped-tool-versions.txt"
+          {
+            printf 'iverilog_package=%s\n' "$iverilog_package"
+            iverilog -V 2>&1
+          } | tee "full-prep-out/v${{ matrix.variant }}/gate-tool-versions.txt"
+
+      - name: Download the one frozen common mapped artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: full-prep-common-mapped
+          path: full-prep-common-out
 
       - name: Fetch pinned Nangate45 Liberty
         run: |
@@ -145,7 +204,7 @@ jobs:
           test "$(sha256sum build/lib/NangateOpenCellLibrary_typical.lib | cut -d' ' -f1)" = \
             8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1
 
-      - name: Hierarchical default-ABC full-PREP standard-cell mapping
+      - name: Map the variant side and compose the frozen common block
         env:
           LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
         run: |
@@ -153,6 +212,11 @@ jobs:
           source full-prep/contract.env
           set +a
           bash full-prep/run_synth.sh "${{ matrix.variant }}"
+
+      - name: Compile and simulate the composed mapped full-PREP netlist
+        env:
+          LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
+        run: bash full-prep/run_gate_functional.sh "${{ matrix.variant }}" 32
 
       - name: Mapped timing in the pinned physical image
         env:
@@ -166,7 +230,8 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             -e CLOCK_PERIOD \
             -e LIBERTY=/work/build/lib/NangateOpenCellLibrary_typical.lib \
-            -e "NETLIST=/work/full-prep-out/v${variant}/full_prep_v44.mapped.v" \
+            -e COMMON_NETLIST=/work/full-prep-common-out/common_predictor.mapped.v \
+            -e "VARIANT_NETLIST=/work/full-prep-out/v${variant}/variant_only.mapped.v" \
             "$ORFS_IMAGE" -lc \
             '/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad -exit full-prep/mapped_sta.tcl' \
             2>&1 | tee "full-prep-out/v${variant}/mapped_sta.rpt"
@@ -197,6 +262,8 @@ jobs:
             --directory "full-prep-out/v${variant}" \
             --liberty "$LIBERTY" \
             --base-metrics "full-prep-out/v${variant}/mapped_base_metrics.json" \
+            --common-manifest full-prep-common-out/common_manifest.json \
+            --common-verilog full-prep-common-out/common_predictor.mapped.v \
             --period "$CLOCK_PERIOD" \
             --output "full-prep-out/v${variant}/mapped_metrics.json"
           {
@@ -205,13 +272,17 @@ jobs:
             printf 'VARIANT=%s\n' "$variant"
             printf 'CLOCK_PERIOD_NS=%s\n' "$CLOCK_PERIOD"
             printf 'ABC_DELAY_PS=%s\n' "$ABC_DELAY_PS"
-            printf '%s\n' 'MAPPING_FLOW=synth without flatten/ABC; dfflibmap; default ABC per selected RTL module; flatten after mapping'
+            printf '%s\n' 'MAPPING_FLOW=one frozen common predictor/ROM mapping; independent variant-side default ABC; no optimization after exact common import'
             printf 'ABC_COMMAND=abc -liberty <pinned Nangate45 Liberty> -D %s\n' \
               "$ABC_DELAY_PS"
             sha256sum "$LIBERTY"
             sha256sum "full-prep-out/v${variant}/full_prep_v44.mapped.v"
             sha256sum "full-prep-out/v${variant}/full_prep_v44.mapped.json"
+            sha256sum "full-prep-out/v${variant}/variant_only.mapped.v"
             sha256sum "full-prep-out/v${variant}/mapped.hier.json"
+            sha256sum full-prep-common-out/common_predictor.mapped.v
+            sha256sum full-prep-common-out/common_predictor.mapped.json
+            sha256sum full-prep-common-out/common_manifest.json
             sha256sum build/coeff_rom.mem build/square_a.mem build/square_b.mem build/cube.mem
           } | tee "full-prep-out/v${variant}/mapping-provenance.txt"
 
@@ -225,7 +296,7 @@ jobs:
           retention-days: 30
 
   compare_mapped:
-    needs: mapped
+    needs: [common_mapped, mapped]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -237,6 +308,10 @@ jobs:
         with:
           name: full-prep-mapped-v43
           path: full-prep-out/v43
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-prep-common-mapped
+          path: full-prep-common-out
       - name: Build the same-run mapped comparison
         run: python3 full-prep/compare_mapped.py
       - uses: actions/upload-artifact@v4
@@ -266,6 +341,10 @@ jobs:
         with:
           name: full-prep-mapped-v${{ matrix.variant }}
           path: full-prep-out/v${{ matrix.variant }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: full-prep-common-mapped
+          path: full-prep-common-out
       - uses: actions/download-artifact@v4
         with:
           name: full-prep-toolchain-lock

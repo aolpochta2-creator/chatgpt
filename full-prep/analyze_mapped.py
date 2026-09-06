@@ -18,6 +18,14 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def sha256_manifest(path: Path) -> dict[str, str]:
+    result = {}
+    for line in path.read_text().splitlines():
+        digest, name = line.split(maxsplit=1)
+        result[name] = digest
+    return result
+
+
 def stat_value(text: str, label: str) -> int:
     match = re.search(rf"{re.escape(label)}:\s+(\d+)", text)
     if not match:
@@ -102,6 +110,23 @@ def recursive_leaf_cells(design: dict, top: str) -> list[tuple[str, dict, tuple[
 def module_sha256(module: dict) -> str:
     payload = json.dumps(module, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(payload).hexdigest()
+
+
+def cell_name_type_sha256(items: list[tuple[str, str]]) -> str:
+    payload = json.dumps(sorted(items), separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def common_flat_cell_identity(module: dict) -> tuple[int, str]:
+    """Fingerprint the frozen common gates after hierarchy-only flattening."""
+    cells = []
+    for name, cell in module.get("cells", {}).items():
+        marker = "\\u_predictor."
+        if marker not in name:
+            continue
+        relative_name = name.split(marker, 1)[1]
+        cells.append((relative_name, cell["type"]))
+    return len(cells), cell_name_type_sha256(cells)
 
 
 def classify_leaf_regions(design: dict, top: str,
@@ -204,6 +229,8 @@ def main() -> None:
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--liberty", type=Path, required=True)
     parser.add_argument("--base-metrics", type=Path, required=True)
+    parser.add_argument("--common-manifest", type=Path, required=True)
+    parser.add_argument("--common-verilog", type=Path, required=True)
     parser.add_argument("--period", type=float, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -223,6 +250,7 @@ def main() -> None:
     mapped_hier_design = json.loads(mapped_hier_json_path.read_text())
     mapped = mapped_design["modules"]["full_prep_v44"]
     base = json.loads(args.base_metrics.read_text())
+    common = json.loads(args.common_manifest.read_text())
 
     expected_ports = {
         "Clk": ("input", 1),
@@ -284,13 +312,20 @@ def main() -> None:
     assert len(mapped_hier_leaves) == len(mapped["cells"]), (
         len(mapped_hier_leaves), len(mapped["cells"]))
     common_module_hashes = {
-        name: module_sha256(mapped_hier_design["modules"][name])
-        for name in ("hz_predictor_csa", "hz_predictor_roms")
-        if name in mapped_hier_design["modules"]
+        "hz_predictor_csa": module_sha256(
+            mapped_hier_design["modules"]["hz_predictor_csa"])
     }
-    assert set(common_module_hashes) == {"hz_predictor_csa", "hz_predictor_roms"}
+    assert common_module_hashes["hz_predictor_csa"] == \
+        common["reimport_module_json_sha256"]
     hierarchical_cost = classify_leaf_regions(mapped_hier_design,
                                                "full_prep_v44", liberty_areas)
+    combined_common = hierarchical_cost.pop("common_predictor_non_rom")
+    assert combined_common["logical_cells"] == common["logical_cells"]
+    assert abs(combined_common["logical_area_um2"]
+               - common["logical_area_um2"]) < 0.01
+    hierarchical_cost["common_predictor_non_rom"] = \
+        common["cost_by_region"]["predictor_non_rom"]
+    hierarchical_cost["common_rom"] = common["cost_by_region"]["rom"]
     assert sum(item["logical_cells"] for item in hierarchical_cost.values()) == \
         base["logical_cells"]
     assert abs(sum(item["logical_area_um2"] for item in hierarchical_cost.values())
@@ -305,6 +340,13 @@ def main() -> None:
         region_metrics[f"{region}_logical_cells"] = values["logical_cells"]
         region_metrics[f"{region}_logical_area_um2"] = values["logical_area_um2"]
 
+    common_flat_count, common_flat_fingerprint = \
+        common_flat_cell_identity(mapped)
+    assert common_flat_count == common["logical_cells"], (
+        common_flat_count, common["logical_cells"])
+    assert common_flat_fingerprint == common["reimport_cell_name_type_sha256"], (
+        common_flat_fingerprint, common["reimport_cell_name_type_sha256"])
+
     summary = dict(base)
     summary.update({
         "variant": args.variant,
@@ -316,6 +358,7 @@ def main() -> None:
         "rom_representation": "Yosys-expanded combinational standard-cell logic",
         "rom_content_bits": 21248,
         "premap_generic_cells": len(premap_leaves),
+        "premap_scope": "variant side with frozen common represented as a blackbox",
         "premap_memories": 0,
         "mapped_memories": 0,
         "premap_source_cell_counts": dict(sorted(premap_sources.items())),
@@ -323,6 +366,22 @@ def main() -> None:
         "mapped_hierarchical_leaf_cells": len(mapped_hier_leaves),
         "mapped_hierarchical_cost_by_region": hierarchical_cost,
         "mapped_common_module_sha256": common_module_hashes,
+        "common_mapped_verilog_sha256": sha256(args.common_verilog),
+        "common_manifest_sha256": sha256(args.common_manifest),
+        "common_source_manifest_sha256": common["source_manifest_sha256"],
+        "common_production_rtl_lock_sha256":
+            common["production_rtl_lock_sha256"],
+        "common_reimport_module_json_sha256":
+            common["reimport_module_json_sha256"],
+        "common_flat_cell_count": common_flat_count,
+        "common_flat_cell_name_type_sha256": common_flat_fingerprint,
+        "common_dff_cells": common["dff_cells"],
+        "common_boundary_ports": common["boundary_ports"],
+        "rom_sha256": sha256_manifest(out / "rom-sha256.txt"),
+        "mapped_tool_versions_sha256": sha256(
+            out / "mapped-tool-versions.txt"),
+        "gate_trace_sha256": sha256(out / "gate-trace.txt"),
+        "gate_level_functional_pass": True,
         "mapped_cell_type_counts": dict(sorted(cell_types.items())),
         "mapped_explicit_mux_cells": sum(
             count for kind, count in cell_types.items() if "MUX" in kind),
@@ -342,14 +401,17 @@ def main() -> None:
         "liberty_sha256": sha256(args.liberty),
         "wrapper_sha256": sha256(ROOT / "full-prep" / "full_prep_top.sv"),
         "measurement": "mapped standard-cell timing without routed parasitics",
-        "mapping_mode": "yosys-abc-hierarchical-default",
+        "variant_only_mapped_verilog_sha256": sha256(
+            out / "variant_only.mapped.v"),
+        "mapping_mode": "single-frozen-common-plus-yosys-abc-hierarchical-default",
         "mapping_invocation": (
             f"abc -liberty <pinned Nangate45 Liberty> "
             f"-D {round(args.period * 1000)}"
         ),
         "mapping_network_policy": (
-            "preserve production RTL module boundaries through default ABC; "
-            "flatten only after mapping; no ROM black boxes or area-free inputs"
+            "map the predictor/ROM once; map each variant with a predictor "
+            "blackbox; overwrite it with the exact frozen real standard-cell "
+            "artifact only after all ABC passes; then flatten without opt/clean"
         ),
     })
     summary.update(region_metrics)
