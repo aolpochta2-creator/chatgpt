@@ -14,10 +14,19 @@ V43 = json.loads((ROOT / "v43" / "mapped_metrics.json").read_text())
 
 for key in ("top", "clock_period_ns", "boundary_ports", "registered_output_bits",
             "external_candidate_k", "final_included", "rom_representation",
-            "rom_content_bits", "liberty_sha256", "wrapper_sha256"):
+            "rom_content_bits", "liberty_sha256", "wrapper_sha256",
+            "mapping_mode", "mapping_invocation", "mapping_network_policy",
+            "mapped_common_module_sha256"):
     assert V36[key] == V43[key], (key, V36[key], V43[key])
 assert V36["variant"] == 36 and V43["variant"] == 43
 assert V36["dff_cells"] == V43["dff_cells"] == 160
+for key in (
+    "common_rom_logical_cells",
+    "common_rom_logical_area_um2",
+    "common_predictor_non_rom_logical_cells",
+    "common_predictor_non_rom_logical_area_um2",
+):
+    assert V36[key] == V43[key], (key, V36[key], V43[key])
 
 metric_keys = (
     "logical_cells",
@@ -28,6 +37,14 @@ metric_keys = (
     "max_data_fanout_excluding_clock_reset",
     "premap_generic_cells",
     "mapped_explicit_mux_cells",
+    "common_rom_logical_cells",
+    "common_rom_logical_area_um2",
+    "common_predictor_non_rom_logical_cells",
+    "common_predictor_non_rom_logical_area_um2",
+    "common_candidate_selector_and_special_logical_cells",
+    "common_candidate_selector_and_special_logical_area_um2",
+    "product_specific_logical_cells",
+    "product_specific_logical_area_um2",
 )
 rows = []
 deltas = {}
@@ -50,9 +67,14 @@ comparison = {
         "wrapper_sha256": V36["wrapper_sha256"],
         "rom_representation": V36["rom_representation"],
         "rom_content_bits": V36["rom_content_bits"],
+        "mapping_mode": V36["mapping_mode"],
+        "mapped_common_module_sha256": V36["mapped_common_module_sha256"],
     },
     "metrics": deltas,
-    "caveat": "source-count decomposition is diagnostic because ABC maps globally",
+    "caveat": (
+        "region decomposition follows declared hierarchy boundaries; default ABC "
+        "optimizes within, not across, those boundaries"
+    ),
 }
 (ROOT / "mapped_comparison.json").write_text(
     json.dumps(comparison, indent=2, sort_keys=True) + "\n")

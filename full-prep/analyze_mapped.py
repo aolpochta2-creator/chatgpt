@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 
@@ -36,9 +36,10 @@ def cell_source_counts(module: dict) -> dict[str, int]:
                                module.get("cells", {}).values()).items()))
 
 
-def liberty_directions(path: Path) -> dict[str, dict[str, str]]:
+def liberty_metadata(path: Path) -> tuple[dict[str, dict[str, str]], dict[str, float]]:
     text = path.read_text()
-    result: dict[str, dict[str, str]] = {}
+    directions: dict[str, dict[str, str]] = {}
+    areas: dict[str, float] = {}
     cell_pattern = re.compile(r"\bcell\s*\(\s*([^\s)]+)\s*\)\s*\{")
     pin_pattern = re.compile(r"\bpin\s*\(\s*([^\s)]+)\s*\)\s*\{")
 
@@ -60,12 +61,14 @@ def liberty_directions(path: Path) -> dict[str, dict[str, str]]:
                                   pin_body)
             if direction:
                 pins[pin_name] = direction.group(1)
-        result[cell_name] = pins
-    return result
+        area = re.search(r"\barea\s*:\s*([0-9.eE+-]+)\s*;", cell_body)
+        if area:
+            areas[cell_name] = float(area.group(1))
+        directions[cell_name] = pins
+    return directions, areas
 
 
-def fanout_by_bit(module: dict, liberty: Path) -> Counter[int]:
-    directions = liberty_directions(liberty)
+def fanout_by_bit(module: dict, directions: dict[str, dict[str, str]]) -> Counter[int]:
     fanout: Counter[int] = Counter()
     for cell in module.get("cells", {}).values():
         cell_type = cell["type"]
@@ -80,13 +83,119 @@ def fanout_by_bit(module: dict, liberty: Path) -> Counter[int]:
     return fanout
 
 
-def first_path_instances(sta: str) -> list[str]:
-    first = sta.split("\nStartpoint:", 1)[0]
-    names = []
-    for name in re.findall(r"[\^v]\s+(\S+)/\S+\s+\([A-Z][A-Z0-9_]*_X\d+\)", first):
-        if name not in names:
-            names.append(name)
-    return names
+def recursive_leaf_cells(design: dict, top: str) -> list[tuple[str, dict, tuple[str, ...]]]:
+    modules = design["modules"]
+    leaves: list[tuple[str, dict, tuple[str, ...]]] = []
+
+    def walk(module_name: str, ancestry: tuple[str, ...]) -> None:
+        for instance, cell in modules[module_name].get("cells", {}).items():
+            cell_type = cell["type"]
+            if cell_type in modules:
+                walk(cell_type, ancestry + (f"{instance}:{cell_type}",))
+            else:
+                leaves.append((instance, cell, ancestry))
+
+    walk(top, ())
+    return leaves
+
+
+def module_sha256(module: dict) -> str:
+    payload = json.dumps(module, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def classify_leaf_regions(design: dict, top: str,
+                          areas: dict[str, float]) -> dict[str, dict[str, float | int]]:
+    modules = design["modules"]
+    counts: Counter[str] = Counter()
+    region_area: defaultdict[str, float] = defaultdict(float)
+
+    def child_region(cell_type: str, inherited: str) -> str:
+        lowered = cell_type.lower()
+        if "hz_predictor_roms" in lowered:
+            return "common_rom"
+        if "hz_predictor_csa" in lowered:
+            return "common_predictor_non_rom"
+        if "hz_product_v36" in lowered or "hz_product_v43" in lowered:
+            return "product_specific"
+        if "hz_prep" in lowered:
+            return "common_candidate_selector_and_special"
+        return inherited
+
+    def walk(module_name: str, region: str) -> None:
+        for cell in modules[module_name].get("cells", {}).values():
+            cell_type = cell["type"]
+            if cell_type in modules:
+                walk(cell_type, child_region(cell_type, region))
+            else:
+                if cell_type not in areas:
+                    raise KeyError(f"mapped cell {cell_type} has no Liberty area")
+                counts[region] += 1
+                region_area[region] += areas[cell_type]
+
+    walk(top, "output_register_boundary")
+    return {
+        region: {"logical_cells": counts[region],
+                 "logical_area_um2": region_area[region]}
+        for region in sorted(counts)
+    }
+
+
+def first_path_details(sta: str, directions: dict[str, dict[str, str]]) -> dict:
+    marker = "Startpoint:"
+    if marker not in sta:
+        raise ValueError("mapped STA has no timing path")
+    path = marker + sta.split(marker, 1)[1]
+    path = path.split("\nStartpoint:", 1)[0]
+    startpoint = re.search(r"^Startpoint:\s+(.+?)\s+\(", path, re.MULTILINE)
+    endpoint = re.search(r"^Endpoint:\s+(.+?)\s+\(", path, re.MULTILINE)
+    if not startpoint or not endpoint:
+        raise ValueError("mapped STA path has no startpoint/endpoint")
+
+    instances: list[str] = []
+    cell_types: list[str] = []
+    delay_by_region: defaultdict[str, float] = defaultdict(float)
+    output_pin = re.compile(r"[\^v]\s+(\S+)/(\S+)\s+\(([^)]+)\)\s*$")
+
+    def region(instance: str) -> str:
+        lowered = instance.lower()
+        if "u_roms" in lowered:
+            return "common_rom"
+        if "u_predictor" in lowered:
+            return "common_predictor_non_rom"
+        if ("g_v36" in lowered or "g_v43" in lowered) and \
+                ("u_pd" in lowered or "u_px" in lowered):
+            return "product_specific"
+        if "u_prep" in lowered:
+            return "common_candidate_selector_and_special"
+        return "output_register_boundary_or_unattributed"
+
+    for line in path.splitlines():
+        match = output_pin.search(line)
+        if not match:
+            continue
+        instance, pin, cell_type = match.groups()
+        if directions.get(cell_type, {}).get(pin) != "output":
+            continue
+        numbers = re.findall(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?",
+                             line[:match.start()])
+        if len(numbers) < 2:
+            raise ValueError(f"cannot recover cell delay from STA row: {line}")
+        delay = float(numbers[-2])
+        instances.append(instance)
+        cell_types.append(cell_type)
+        delay_by_region[region(instance)] += delay
+
+    return {
+        "startpoint": startpoint.group(1),
+        "endpoint": endpoint.group(1),
+        "cell_count": len(instances),
+        "buffer_count": sum("BUF" in cell_type for cell_type in cell_types),
+        "logic_count": sum("BUF" not in cell_type for cell_type in cell_types),
+        "instances": instances,
+        "cell_types": cell_types,
+        "incremental_cell_delay_by_region_ns": dict(sorted(delay_by_region.items())),
+    }
 
 
 def main() -> None:
@@ -103,6 +212,7 @@ def main() -> None:
     mapped_json_path = out / "full_prep_v44.mapped.json"
     mapped_v_path = out / "full_prep_v44.mapped.v"
     premap_json_path = out / "premap.json"
+    mapped_hier_json_path = out / "mapped.hier.json"
     final_stat = (out / "stat.rpt").read_text()
     premap_stat = (out / "premap.stat.rpt").read_text()
     sta_path = out / "mapped_sta.rpt"
@@ -110,8 +220,8 @@ def main() -> None:
 
     mapped_design = json.loads(mapped_json_path.read_text())
     premap_design = json.loads(premap_json_path.read_text())
+    mapped_hier_design = json.loads(mapped_hier_json_path.read_text())
     mapped = mapped_design["modules"]["full_prep_v44"]
-    premap = premap_design["modules"]["full_prep_v44"]
     base = json.loads(args.base_metrics.read_text())
 
     expected_ports = {
@@ -134,7 +244,10 @@ def main() -> None:
     dffs = sum(count for kind, count in cell_types.items() if kind.startswith("DFF"))
     assert dffs == 160, dffs
     assert not mapped.get("memories")
-    assert not premap.get("memories")
+    assert all(not module.get("memories")
+               for module in premap_design["modules"].values())
+    assert all(not module.get("memories")
+               for module in mapped_hier_design["modules"].values())
     assert stat_value(final_stat, "Number of memories") == 0
     assert stat_value(premap_stat, "Number of memories") == 0
     assert base["top"] == "full_prep_v44"
@@ -142,7 +255,8 @@ def main() -> None:
     assert abs(base["worst_setup_slack_ns"] + base["max_data_arrival_ns"]
                - args.period) < 0.25
 
-    fanout = fanout_by_bit(mapped, args.liberty)
+    directions, liberty_areas = liberty_metadata(args.liberty)
+    fanout = fanout_by_bit(mapped, directions)
     rom_bits: set[int] = set()
     rom_aliases: list[str] = []
     for name, net in mapped.get("netnames", {}).items():
@@ -152,7 +266,8 @@ def main() -> None:
             rom_bits.update(bit for bit in net["bits"] if isinstance(bit, int))
     rom_fanout = sorted(((fanout[bit], bit) for bit in rom_bits), reverse=True)
 
-    path_instances = first_path_instances(sta)
+    path = first_path_details(sta, directions)
+    path_instances = path["instances"]
     mapped_cells = mapped["cells"]
     path_sources = Counter()
     matched_instances = 0
@@ -162,6 +277,33 @@ def main() -> None:
         if cell is not None:
             matched_instances += 1
             path_sources[source_file(cell)] += 1
+
+    premap_leaves = recursive_leaf_cells(premap_design, "full_prep_v44")
+    mapped_hier_leaves = recursive_leaf_cells(mapped_hier_design,
+                                              "full_prep_v44")
+    assert len(mapped_hier_leaves) == len(mapped["cells"]), (
+        len(mapped_hier_leaves), len(mapped["cells"]))
+    common_module_hashes = {
+        name: module_sha256(mapped_hier_design["modules"][name])
+        for name in ("hz_predictor_csa", "hz_predictor_roms")
+        if name in mapped_hier_design["modules"]
+    }
+    assert set(common_module_hashes) == {"hz_predictor_csa", "hz_predictor_roms"}
+    hierarchical_cost = classify_leaf_regions(mapped_hier_design,
+                                               "full_prep_v44", liberty_areas)
+    assert sum(item["logical_cells"] for item in hierarchical_cost.values()) == \
+        base["logical_cells"]
+    assert abs(sum(item["logical_area_um2"] for item in hierarchical_cost.values())
+               - base["logical_area_um2"]) < 0.01
+
+    premap_sources = Counter()
+    for _, cell, _ in premap_leaves:
+        premap_sources[source_file(cell)] += 1
+
+    region_metrics = {}
+    for region, values in hierarchical_cost.items():
+        region_metrics[f"{region}_logical_cells"] = values["logical_cells"]
+        region_metrics[f"{region}_logical_area_um2"] = values["logical_area_um2"]
 
     summary = dict(base)
     summary.update({
@@ -173,11 +315,14 @@ def main() -> None:
         "final_included": False,
         "rom_representation": "Yosys-expanded combinational standard-cell logic",
         "rom_content_bits": 21248,
-        "premap_generic_cells": stat_value(premap_stat, "Number of cells"),
+        "premap_generic_cells": len(premap_leaves),
         "premap_memories": 0,
         "mapped_memories": 0,
-        "premap_source_cell_counts": cell_source_counts(premap),
+        "premap_source_cell_counts": dict(sorted(premap_sources.items())),
         "mapped_source_cell_counts": cell_source_counts(mapped),
+        "mapped_hierarchical_leaf_cells": len(mapped_hier_leaves),
+        "mapped_hierarchical_cost_by_region": hierarchical_cost,
+        "mapped_common_module_sha256": common_module_hashes,
         "mapped_cell_type_counts": dict(sorted(cell_types.items())),
         "mapped_explicit_mux_cells": sum(
             count for kind, count in cell_types.items() if "MUX" in kind),
@@ -187,21 +332,27 @@ def main() -> None:
         "critical_path_instance_count": len(path_instances),
         "critical_path_instances_matched_to_json": matched_instances,
         "critical_path_source_file_counts": dict(sorted(path_sources.items())),
+        "critical_path": path,
+        "rom_on_first_critical_path": any(
+            "u_roms" in instance.lower() for instance in path_instances),
+        "rom_first_critical_path_incremental_cell_delay_ns":
+            path["incremental_cell_delay_by_region_ns"].get("common_rom", 0.0),
         "mapped_netlist_sha256": sha256(mapped_v_path),
         "mapped_json_sha256": sha256(mapped_json_path),
         "liberty_sha256": sha256(args.liberty),
         "wrapper_sha256": sha256(ROOT / "full-prep" / "full_prep_top.sv"),
         "measurement": "mapped standard-cell timing without routed parasitics",
-        "mapping_mode": "yosys-abc-fast",
+        "mapping_mode": "yosys-abc-hierarchical-default",
         "mapping_invocation": (
-            f"abc -fast -liberty <pinned Nangate45 Liberty> "
+            f"abc -liberty <pinned Nangate45 Liberty> "
             f"-D {round(args.period * 1000)}"
         ),
         "mapping_network_policy": (
-            "one flat full-PREP combinational network; no ROM black boxes "
-            "or hierarchy cuts"
+            "preserve production RTL module boundaries through default ABC; "
+            "flatten only after mapping; no ROM black boxes or area-free inputs"
         ),
     })
+    summary.update(region_metrics)
     args.output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, indent=2, sort_keys=True))
 

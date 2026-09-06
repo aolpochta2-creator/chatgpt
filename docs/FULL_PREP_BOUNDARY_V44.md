@@ -136,27 +136,41 @@ timing failure.  It also shows that separate GitHub matrix runners were not
 competing for one CPU and that ROM expansion itself was not the 119-minute
 bottleneck.
 
-The revised flow retains one flat full-PREP combinational network and performs
-one standard-cell mapping pass after a no-ABC Yosys lowering step, but uses the
-official Yosys 0.33 `abc -fast` path.  At that pinned Yosys source revision the
-fast Liberty script removes the expensive `fraig/scorr/dc2/dch/nf` sequence
-from the timed-out default path and uses the bounded `strash/dretime/map`
-sequence.  The actual ABC commands remain in `yosys.log`.  There is no ROM
-black box, hierarchy cut, external oracle or independently frozen ROM netlist.
-Both variants use the same command, Nangate45 Liberty and 15,000 ps delay
-constraint.  If this bounded global pass also proves impractical, a common
-explicit gate-level ROM/predictor factorization may be considered and must be
-declared as a separate methodology limitation before use.
+Diagnostic run `34022845201` completed a flat `abc -fast` pass, but it is not
+accepted as the canonical QoR mapper.  At 15 ns it produced almost entirely X1
+logic, data fanout 371/376 and mapped arrival near 25 ns.  In pinned Yosys 0.33
+the fast Liberty script is only `strash; dretime; map`; it omits the default
+`fraig/scorr/dc2/dch/nf` optimization sequence.  OpenROAD repair could change
+that netlist substantially, but neither its absolute PPA nor its relative
+ranking is assumed equivalent to a normal delay-oriented mapping.  The run is
+retained as mapping-feasibility evidence only.
+
+The next preflight instead preserves the production RTL module boundaries
+through one standard, non-fast `abc -liberty ... -D 15000` command.  Yosys 0.33
+applies that command independently to every selected process-free module; the
+design is flattened only after all modules have been mapped.  Consequently the
+real generated ROM module, common predictor, product/reducer modules and PREP
+local logic are optimized as finite standard-cell networks rather than one
+127k-cell or 90k-cell ABC network.  The V36 and V43 jobs use the same module
+boundaries, command and Liberty.  Exact mapped hashes for the common ROM and
+predictor modules must match across the pair.
+
+This factorization is structurally honest but is also an explicit methodology
+limitation: ABC cannot optimize across an RTL module boundary, so absolute QoR
+may be more conservative than a tractable fully optimized flat commercial
+flow.  It does, however, preserve every real gate and inter-module timing path,
+and it exposes the common ROM/predictor cost directly.  If standard
+hierarchical ABC is still impractical, the experiment stops for a new declared
+mapping decision; it does not silently fall back to `abc -fast`.
 
 ## Single timing point
 
-The canonical integration checkpoint is preregistered at **15.0 ns**.  This is
-one common, deliberately conservative period, not a grid point inferred from
-historical 10 ns slack, PREP6 Tmin or a selected seed.  The old cancelled run
-shows that the full boundary is a roughly 156k–194k-cell generic logic problem
-before standard-cell remapping, with a long common ROM/predictor cone in front
-of the product and selector.  A 15 ns target is intended to provide closure
-headroom while still enabling timing-driven mapping, placement and repair.
+The mapping preflight uses **15.0 ns** as its one common delay constraint.  It
+is not a grid point inferred from historical 10 ns slack, PREP6 Tmin or a
+selected seed.  The physical launch remains blocked until the quality-oriented
+hierarchical result confirms that 15 ns is genuinely conservative and until
+one common floorplan is frozen from its mapped capacity.  A diagnostic mapping
+result is not allowed to force a looser canonical physical contract.
 
 There will be no automatic second period.  If this point proves unsuitable,
 the run remains canonical diagnostic evidence and the reason is documented
@@ -231,7 +245,7 @@ Before physical launch:
    `D=9232379236109516801` and `D=9340465626629537792`;
 5. check selected `r` and `NX` against exact integer arithmetic;
 6. check V36/V43 registered outputs for equivalence on legal vectors;
-7. map both variants with the identical single-ABC flow;
+7. map both variants with the identical hierarchy-bounded default-ABC flow;
 8. verify 160 mapped data flops, no residual memories and complete mapped
    reports;
 9. freeze one common floorplan after the mapped capacity check.

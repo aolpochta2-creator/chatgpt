@@ -145,7 +145,7 @@ jobs:
           test "$(sha256sum build/lib/NangateOpenCellLibrary_typical.lib | cut -d' ' -f1)" = \
             8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1
 
-      - name: One-pass full-PREP standard-cell mapping
+      - name: Hierarchical default-ABC full-PREP standard-cell mapping
         env:
           LIBERTY: build/lib/NangateOpenCellLibrary_typical.lib
         run: |
@@ -205,10 +205,13 @@ jobs:
             printf 'VARIANT=%s\n' "$variant"
             printf 'CLOCK_PERIOD_NS=%s\n' "$CLOCK_PERIOD"
             printf 'ABC_DELAY_PS=%s\n' "$ABC_DELAY_PS"
-            printf '%s\n' 'MAPPING_FLOW=synth -noabc; one dfflibmap; one abc -fast -liberty -D 15000'
+            printf '%s\n' 'MAPPING_FLOW=synth without flatten/ABC; dfflibmap; default ABC per selected RTL module; flatten after mapping'
+            printf 'ABC_COMMAND=abc -liberty <pinned Nangate45 Liberty> -D %s\n' \
+              "$ABC_DELAY_PS"
             sha256sum "$LIBERTY"
             sha256sum "full-prep-out/v${variant}/full_prep_v44.mapped.v"
             sha256sum "full-prep-out/v${variant}/full_prep_v44.mapped.json"
+            sha256sum "full-prep-out/v${variant}/mapped.hier.json"
             sha256sum build/coeff_rom.mem build/square_a.mem build/square_b.mem build/cube.mem
           } | tee "full-prep-out/v${variant}/mapping-provenance.txt"
 
