@@ -203,15 +203,20 @@ def audit_one(path: Path, rows: list[list[str]]) -> None:
         check_wire(rows, top, "FINAL", final, re.escape(label), label, width, signed)
 
     check_cells(rows, top, "predictor", predictor, "$mul", "hz_predictor_csa.sv", 81,
-                (44, 31, 75, 1, 1), "Product1 44s*31s->75s")
+                (75, 31, 75, 1, 1),
+                "Product1 source44s context-expanded to 75s*31s->75s")
     check_cells(rows, top, "predictor", predictor, "$mul", "hz_predictor_csa.sv", 82,
-                (34, 35, 69, 1, 1), "Product2 34s*35s->69s")
+                (69, 35, 69, 1, 1),
+                "Product2 source34s context-expanded to 69s*35s->69s")
     check_cells(rows, top, "predictor", predictor, "$mul", "hz_predictor_csa.sv", 83,
-                (24, 39, 63, 1, 1), "Product3 24s*39s->63s")
+                (63, 39, 63, 1, 1),
+                "Product3 source24s context-expanded to 63s*39s->63s")
     check_cells(rows, top, "predictor", predictor, "$mul", "hz_predictor_csa.sv", 84,
-                (14, 43, 57, 1, 1), "Product4 14s*43s->57s")
+                (57, 43, 57, 1, 1),
+                "Product4 source14s context-expanded to 57s*43s->57s")
     check_cells(rows, top, "predictor", predictor, "$mul", "hz_predictor_csa.sv", 85,
-                (4, 47, 51, 1, 1), "Product5 4s*47s->51s")
+                (51, 47, 51, 1, 1),
+                "Product5 source4s context-expanded to 51s*47s->51s")
 
     check_cells(rows, top, "FINAL", final, "$mul", "hz_final.sv", 15,
                 (33, 33, 66, 0, 0), "G_Product 33u*33u->66u")
